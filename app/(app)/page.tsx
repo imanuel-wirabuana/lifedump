@@ -4,18 +4,21 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { getAllItems, deleteItem, updateItemTask } from "@/lib/queries";
 import { UniversalInput } from "@/components/universal-input";
-import { ConfirmationDrawer } from "@/components/confirmation-drawer";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { CheckSquare, DollarSign, FileText, Trash2, Calendar, TrendingUp, NotebookTabs, Pencil } from "lucide-react";
+import { CheckSquare, DollarSign, FileText, Trash2, Calendar, TrendingUp, NotebookTabs, Pencil, AlertTriangle, ArrowRight, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
 import { Item, ItemCategory } from "@/lib/types";
+import { collection, query, where, orderBy, onSnapshot, doc, deleteDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { toast } from "sonner";
+import Link from "next/link";
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -35,6 +38,27 @@ export default function Home() {
   const queryClient = useQueryClient();
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [pendingDumps, setPendingDumps] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const q = query(
+      collection(db, "users", userId, "dumps"),
+      where("status", "in", ["needs_review", "failed"]),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const dumps = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      setPendingDumps(dumps);
+    });
+
+    return () => unsubscribe();
+  }, [userId]);
 
   const { data: items, isLoading } = useQuery({
     queryKey: ["items", userId],
@@ -155,6 +179,82 @@ export default function Home() {
         </Card>
       </div>
 
+      {/* Pending Reviews Section */}
+      {pendingDumps.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Pending Reviews</h2>
+          <div className="flex flex-col gap-3">
+            {pendingDumps.map((dump) => (
+              <Card
+                key={dump.id}
+                className={cn(
+                  "border shadow-sm overflow-hidden",
+                  dump.status === "failed" 
+                    ? "border-destructive/30 bg-destructive/5" 
+                    : "border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-500/10"
+                )}
+              >
+                <div className="p-4 flex items-center justify-between gap-4">
+                  <div className="flex gap-3 min-w-0">
+                    <div
+                      className={cn(
+                        "size-8 rounded-lg shrink-0 flex items-center justify-center border",
+                        dump.status === "failed"
+                          ? "text-destructive bg-destructive/10 border-destructive/20"
+                          : "text-indigo-500 bg-indigo-500/10 border-indigo-500/20"
+                      )}
+                    >
+                      {dump.status === "failed" ? (
+                        <AlertTriangle className="size-4" />
+                      ) : (
+                        <Sparkles className="size-4 animate-pulse" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm">
+                        {dump.status === "failed" ? "Categorization Failed" : "Dump Ready for Review"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 italic">
+                        "{dump.rawText}"
+                      </p>
+                      {dump.status === "failed" && dump.error && (
+                        <p className="text-[11px] text-destructive mt-1 font-medium line-clamp-1">
+                          Error: {dump.error}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-muted-foreground hover:text-destructive shrink-0"
+                      onClick={async () => {
+                        try {
+                          await deleteDoc(doc(db, "users", userId!, "dumps", dump.id));
+                          toast.success("Dump deleted successfully");
+                        } catch (err) {
+                          toast.error("Failed to delete dump");
+                        }
+                      }}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                    <Button asChild size="sm" className="h-8 gap-1 shadow-sm shrink-0">
+                      <Link href={`/review/${dump.id}`}>
+                        <span>Review</span>
+                        <ArrowRight className="size-3.5" />
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Universal Input Section */}
       <UniversalInput />
 
@@ -273,7 +373,6 @@ export default function Home() {
         )}
       </div>
 
-      <ConfirmationDrawer />
       <EditDialog
         item={editingItem}
         isOpen={isEditOpen}

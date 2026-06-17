@@ -51,7 +51,9 @@ Stores the raw input text submitted by the user.
     *   `userId`: `string`
     *   `sourceType`: `"text" | "image" | "voice"`
     *   `rawText`: `string` (optional)
-    *   `status`: `"processing" | "needs_review" | "confirmed" | "failed"`
+    *   `status`: `"queued" | "processing" | "needs_review" | "confirmed" | "failed"`
+    *   `extractedItems`: `Array` of maps conforming to categorized item schemas (populated on `needs_review`)
+    *   `error`: `string` (populated on `failed` status)
     *   `createdAt`: `Timestamp`
     *   `updatedAt`: `Timestamp`
 
@@ -105,29 +107,32 @@ Stores general notes or journals.
 
 ## 4. Workflows & Core Mechanisms
 
-### Workflow A: AI Categorization & Extraction
+### Workflow A: Persistent AI Categorization & Extraction
 ```mermaid
 sequenceDiagram
     participant User as User UI
     participant WebSpeech as Web Speech API
-    participant Store as Zustand Store
-    participant API as /api/categorize (Next.js)
+    participant API as /api/dumps (Next.js)
+    participant DB as Firestore DB
     participant Kilo as Kilo AI Gateway
+    participant Listener as Dump Listener (Layout)
 
     User->>WebSpeech: Speak to Mic (optional)
     WebSpeech->>User: Transcribe Voice to Input
-    User->>Store: Enter Text (CurrentInputText)
-    User->>Store: Click "Dump"
-    Store->>API: POST /api/categorize { text }
-    API->>Kilo: generateObject({ prompt, schema })
-    Kilo->>API: Structured JSON response
-    API->>Store: Return JSON list of items
-    Store->>User: Open Confirmation Drawer (needs_review)
+    User->>API: POST /api/dumps { text }
+    API->>DB: Create Dump Doc (status: "processing")
+    API->>User: Return 202 Accepted { dumpId }
+    Note over User: User can navigate freely
+    API->>Kilo: generateObject({ prompt, schema }) in after()
+    Kilo->>API: Structured JSON items
+    API->>DB: Save extractedItems & status: "needs_review"
+    DB-->>Listener: Snapshot Trigger
+    Listener->>User: Sonner Success Toast ("Review" Action)
 ```
 
-1.  **Input Submission**: The user writes in `UniversalInput` or uses the Microphone button (which hooks into the browser's native `SpeechRecognition` API).
-2.  **API Call**: The client issues a POST request to `/api/categorize` passing `{ text }`.
-3.  **LLM Parsing**: The server-side API handler formats the current timestamp into the **Jakarta timezone (Asia/Jakarta)** and passes it to the Vercel AI SDK. It queries the `kilo-auto/free` model via Kilo AI Gateway, instructing it to parse relative dates/times (supporting both date and time) relative to the Jakarta context and format all output timestamps with a **+07:00 offset**, under a strict `Zod` schema:
+1.  **Input Submission**: The user writes text or transcribes speech in `UniversalInput` and hits "Dump".
+2.  **Job Enqueue**: The client fires a non-blocking `POST` to `/api/dumps`. The Route Handler creates a Firestore document at `users/{userId}/dumps/{dumpId}` with `status: "processing"` and returns status `202` with `dumpId` instantly.
+3.  **Asynchronous Parsing**: Next.js `after()` kicks in server-side, formats the Jakarta timezone details, and runs a structured `generateObject` request to the Kilo AI Gateway (`kilo-auto/free` model) with the appropriate schema:
     ```typescript
     const categorizeSchema = z.object({
       items: z.array(
@@ -147,14 +152,13 @@ sequenceDiagram
       assumptions: z.array(z.string()).optional(),
     })
     ```
-4.  **Pending State**: The structured response items are mapped via `mapApiItemsToPendingItems` into the Zustand store (`extractedItems`), shifting `dumpStatus` to `"needs_review"`.
+4.  **Job Completion**: Upon success, `after()` saves the items to `extractedItems` and updates the dump status to `"needs_review"`. If AI fails, the status updates to `"failed"` with the error trace.
 
-### Workflow B: Review & Refinement (AI Loop)
-1.  **View Drafts**: The `ConfirmationDrawer` displays the parsed items. The user can review the proposed category, title, due dates, amounts, etc.
-2.  **AI Refinement Prompt**: If the categorization is incorrect or needs adjustments, the user writes correction instructions (e.g., *"Change item 2 to income instead"* or *"Set due date to next Friday"*).
-3.  **Refine Request**: The client posts to `/api/categorize` sending the original `text`, the current draft `items`, and the user's `feedback` prompt.
-4.  **Refined Response**: The Kilo model reviews the existing items, applies the feedback adjustments, and returns an updated structured list.
-5.  **Remove & Confirm**: Users can manually delete items using a trash button or click "Confirm All" to write them to Firestore. Saving is done as a Firestore Batch transaction via `saveDumpAndItems` inside `lib/firestore.ts`.
+### Workflow B: Dedicated Review & Refinement (AI Loop)
+1.  **Global Routing Toasts**: The `DumpProcessingListener` component in the app layout runs a real-time Firestore query on active processing dumps. When status transitions to `"needs_review"`, it fires a Sonner toast with a click action to go to `/review/{dumpId}`.
+2.  **Interactive Review Page**: In `/review/[id]`, the page registers an `onSnapshot` listener on the dump document. It renders the original raw text and the extracted items as editable card forms (supporting title, description, category swaps, and category-specific inputs).
+3.  **AI Refinement Loop**: The user can submit refinement instructions (e.g., *"Make task 1 due next Monday"*). The client posts to `/api/dumps/{dumpId}/refine`, which updates the Firestore status to `"processing"` and launches a background refinement model run. The page's snapshot listener automatically displays the revised AI list when done.
+4.  **Confirmation & Batch Save**: Clicking "Confirm All Items" executes `confirmDumpAndItems` inside `lib/firestore.ts`. This writes all finalized items to `tasks`, `finances`, or `notes` subcollections, and updates the dump document status to `"confirmed"`, returning the user to the home dashboard.
 
 ---
 
@@ -168,13 +172,19 @@ lifedump/
 │   │   │   └── page.tsx        # Financial Ledger, Cashflow Statistics & savings progress
 │   │   ├── notes/
 │   │   │   └── page.tsx        # Searchable grid of general/journal notes with filters
+│   │   ├── review/[id]/
+│   │   │   └── page.tsx        # Dedicated Review Page for AI processing verification and manual overrides
 │   │   ├── tasks/
 │   │   │   └── page.tsx        # Active and Completed task management lists
-│   │   ├── layout.tsx          # Auth wrapper; Header, Main layout container, and Bottom Nav
-│   │   └── page.tsx            # Main dashboard: statistics overview, input panel, recent feed
+│   │   ├── layout.tsx          # Auth wrapper; Header, Main layout container, Bottom Nav, and background listeners
+│   │   └── page.tsx            # Main dashboard: statistics overview, input panel, pending reviews queue, recent feed
 │   ├── api/
-│   │   └── categorize/
-│   │       └── route.ts        # AI categorization API utilizing Vercel AI SDK and Kilo AI Gateway
+│   │   ├── categorize/
+│   │   │   └── route.ts        # AI categorization API (retained for legacy synchronous refinements)
+│   │   └── dumps/
+│   │       ├── route.ts        # Asynchronous dump submission (writes job to DB and yields immediate 202)
+│   │       └── [id]/refine/
+│   │           └── route.ts    # Asynchronous revision handler (shifts dump back to processing, runs refinement)
 │   ├── sign-in/
 │   │   └── [[...sign-in]]/     # Clerk Authentication pages
 │   ├── sign-up/
@@ -184,7 +194,7 @@ lifedump/
 ├── components/                 # React UI Components
 │   ├── ui/                     # Subdirectory for individual Shadcn elements
 │   ├── bottom-nav.tsx          # Bottom tab navbar with routing active states
-│   ├── confirmation-drawer.tsx # Vaul drawer for review, edit, and refinement of pending items
+│   ├── dump-processing-listener.tsx # Global background database listener routing status shifts to Sonner toasts
 │   ├── edit-dialog.tsx         # Dialog interface to update individual item parameters
 │   ├── header.tsx              # Top app navigation containing title, theme switch, user profile
 │   ├── providers.tsx           # Wraps application with QueryClientProvider

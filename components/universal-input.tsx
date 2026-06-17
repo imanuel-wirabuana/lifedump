@@ -6,10 +6,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useDumpStore, PendingItem } from "@/store/use-dump-store";
 import { Mic, MicOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { mapApiItemsToPendingItems } from "@/lib/mappers";
+import { toast } from "sonner";
 
 export function UniversalInput() {
-  const { currentInputText, setCurrentInputText, setExtractedItems, setDumpStatus } = useDumpStore();
+  const { currentInputText, setCurrentInputText } = useDumpStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
@@ -80,29 +80,27 @@ export function UniversalInput() {
     }
 
     setIsSubmitting(true);
-    setDumpStatus("processing");
 
     try {
-      const response = await fetch("/api/categorize", {
+      const response = await fetch("/api/dumps", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: currentInputText }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to categorize text");
+        throw new Error("Failed to create dump");
       }
 
-      const data = await response.json();
+      // Clear the text immediately
+      setCurrentInputText("");
 
-      // Transform flat API response into the nested PendingItem shape
-      const items = mapApiItemsToPendingItems(data.items);
-
-      setExtractedItems(items);
-      setDumpStatus("needs_review");
+      toast.success("Dump submitted successfully!", {
+        description: "AI is organizing it in the background.",
+      });
     } catch (error) {
       console.error(error);
-      setDumpStatus("failed");
+      toast.error("Failed to submit dump. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
