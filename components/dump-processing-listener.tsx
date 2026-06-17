@@ -21,11 +21,11 @@ export function DumpProcessingListener() {
   useEffect(() => {
     if (!userId) return;
 
-    // Listen to dumps created in the last 10 minutes to track status updates deterministically
+    // Listen to dumps updated in the last 10 minutes to track status updates deterministically
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
     const q = query(
       collection(db, "users", userId, "dumps"),
-      where("createdAt", ">=", tenMinutesAgo)
+      where("updatedAt", ">=", tenMinutesAgo)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {

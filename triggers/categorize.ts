@@ -108,8 +108,9 @@ Current date/time context: ${currentJakartaTime} (in Jakarta local time).
 Please interpret relative date/time descriptions (e.g., "besok jam 10 pagi", "tomorrow at 3pm", "tonight", "next Monday") relative to this context and format them with Jakarta offset (+07:00).
 Text to parse: "${rawText}"`;
 
-      if (feedback && currentItems) {
-        prompt = `You are a refinement AI agent.
+      if (feedback) {
+        if (currentItems && currentItems.length > 0) {
+          prompt = `You are a refinement AI agent.
 The user previously dumped the following text:
 "${rawText}"
 
@@ -125,6 +126,31 @@ You MUST output a JSON object containing a single root key "items" which is an a
 User Location/Timezone: Jakarta, Indonesia (Asia/Jakarta, UTC+07:00)
 Current date/time context: ${currentJakartaTime} (in Jakarta local time).
 Please format all timestamps with Jakarta offset (+07:00).`;
+        } else {
+          prompt = `You are a data extraction assistant.
+You MUST output a JSON object containing a single root key "items" which is an array of objects.
+Each object in the "items" array MUST represent a categorized item ('task', 'finance', or 'note') extracted from the input text, conforming to these rules:
+- category: must be "task", "finance", or "note"
+- title: a short, descriptive name/title
+- content: a description/details (mandatory for all categories, e.g., task description, reason/detail for finance transaction, or general note body). Cannot be null or empty.
+- dueAt: (for tasks) ISO 8601 string of the due date and time with Jakarta offset (e.g. 2026-06-17T10:00:00+07:00) based on the user's input, or null. Support both date and time!
+- financeType: (for finance) "expense" or "income", or null
+- amount: (for finance) numeric amount, or null
+- currency: (for finance) "IDR" or null
+- occurredAt: (for finance) ISO 8601 string of when it happened with Jakarta offset (e.g. 2026-06-17T10:00:00+07:00), or null
+- confidence: number between 0 and 1
+- needsClarification: boolean
+
+User Location/Timezone: Jakarta, Indonesia (Asia/Jakarta, UTC+07:00)
+Current date/time context: ${currentJakartaTime} (in Jakarta local time).
+Please interpret relative date/time descriptions relative to this context and format them with Jakarta offset (+07:00).
+
+The user previously tried to dump text, but it failed to process. They have provided additional instructions/context.
+Original text: "${rawText}"
+Additional instruction/context: "${feedback}"
+
+Extract and categorize items from the original text, guided by the additional instruction/context.`;
+        }
       }
 
       let resultObject: any = null;

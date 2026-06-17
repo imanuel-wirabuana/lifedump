@@ -265,9 +265,11 @@ lifedump/
 
 ### `app/(app)/review/page.tsx` (Review Dashboard)
 *   Queries `getDumps(userId)`.
-*   Filters for dumps with status `"needs_review"`.
+*   Filters for dumps with status `"needs_review"`, `"processing"`, or `"failed"`.
 *   Displays raw dump contents along with their extracted item counts.
-*   Clicking a card opens the global `ConfirmationDrawer` to finalize review.
+*   Clicking a card with `"needs_review"` status opens the global `ConfirmationDrawer` to finalize review.
+*   For `"failed"` status dumps, displays the processing error message and a "Redo" button.
+*   Clicking "Redo" opens a dialog allowing the user to edit the original text and/or provide additional instruction/context (feedback), updating the raw text and sending a refinement request to retry the AI categorization.
 *   Shows a beautiful empty check state when all reviews are completed.
 
 ### `components/header.tsx` (Header Nav & Notifications)

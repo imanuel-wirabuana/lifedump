@@ -12,14 +12,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { dumpId, feedback, currentItems } = await req.json();
+    const { dumpId, feedback, currentItems, rawText } = await req.json();
 
     if (!dumpId) {
       return NextResponse.json({ error: "Dump ID is required" }, { status: 400 });
-    }
-
-    if (!feedback || !feedback.trim()) {
-      return NextResponse.json({ error: "Feedback is required" }, { status: 400 });
     }
 
     // 1. Get the dump document to retrieve the raw text
@@ -30,19 +26,27 @@ export async function POST(req: Request) {
     }
     const dumpData = dumpDoc.data();
 
-    // 2. Update status back to "processing" to trigger the global loading indicator
-    await updateDoc(dumpDocRef, {
+    // 2. Update status back to "processing" and optionally update rawText
+    const updatePayload: Record<string, any> = {
       status: "processing",
       updatedAt: serverTimestamp(),
-    });
+    };
+
+    let finalRawText = dumpData.rawText;
+    if (rawText !== undefined && rawText !== null) {
+      updatePayload.rawText = rawText;
+      finalRawText = rawText;
+    }
+
+    await updateDoc(dumpDocRef, updatePayload);
 
     // 3. Trigger the Trigger.dev background task
     await tasks.trigger("categorize-dump", {
       dumpId,
       userId,
-      rawText: dumpData.rawText,
-      feedback,
-      currentItems,
+      rawText: finalRawText,
+      feedback: feedback && feedback.trim() ? feedback : undefined,
+      currentItems: currentItems || undefined,
     });
 
     return NextResponse.json({ dumpId, status: "processing" }, { status: 202 });
