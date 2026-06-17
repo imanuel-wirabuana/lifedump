@@ -10,6 +10,8 @@ export type Dump = {
   transcript?: string;
   mediaPath?: string;
   status: DumpStatus;
+  extractedItems?: any[] | null;
+  error?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

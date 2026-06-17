@@ -1,13 +1,56 @@
-import { collection, query, getDocs, doc, deleteDoc, updateDoc, Timestamp, getDoc, where } from "firebase/firestore";
+import { collection, query, getDocs, doc, deleteDoc, updateDoc, Timestamp, getDoc, where, limit, startAfter, orderBy, DocumentSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import { Item, ItemCategory, Dump } from "./types";
 
 // Helper to safely convert Firestore Timestamp or any date-like value to a JS Date
-function toDate(value: any): Date {
+export function toDate(value: any): Date {
   if (!value) return new Date();
   if (value instanceof Timestamp) return value.toDate();
   if (value.seconds) return new Date(value.seconds * 1000);
   return new Date(value);
+}
+
+export function mapDocToItem(id: string, data: any, category: ItemCategory): Item {
+  return {
+    id: id,
+    userId: data.userId,
+    dumpId: data.dumpId,
+    category: category,
+    title: data.title,
+    content: data.content,
+    task: data.task ? {
+      isCompleted: data.task.isCompleted ?? false,
+      dueAt: data.task.dueAt ? toDate(data.task.dueAt) : undefined,
+    } : undefined,
+    finance: data.finance ? {
+      type: data.finance.type,
+      amount: data.finance.amount,
+      currency: data.finance.currency || "IDR",
+      occurredAt: toDate(data.finance.occurredAt),
+    } : undefined,
+    note: data.note ? {
+      noteType: data.note.noteType || "general",
+    } : undefined,
+    aiConfidence: data.aiConfidence,
+    createdAt: toDate(data.createdAt),
+    updatedAt: toDate(data.updatedAt),
+  } as Item;
+}
+
+export function mapDocToDump(id: string, data: any): Dump {
+  return {
+    id: id,
+    userId: data.userId,
+    sourceType: data.sourceType,
+    rawText: data.rawText,
+    transcript: data.transcript,
+    mediaPath: data.mediaPath,
+    status: data.status,
+    extractedItems: data.extractedItems || null,
+    error: data.error || null,
+    createdAt: toDate(data.createdAt),
+    updatedAt: toDate(data.updatedAt),
+  } as Dump;
 }
 
 const collectionNameMap = {
@@ -21,33 +64,7 @@ export async function getItemsByCategory(userId: string, category: ItemCategory)
   const q = query(collection(db, "users", userId, collectionName));
 
   const snapshot = await getDocs(q);
-  const items = snapshot.docs.map(docSnap => {
-    const data = docSnap.data();
-    return {
-      id: docSnap.id,
-      userId: data.userId,
-      dumpId: data.dumpId,
-      category: data.category,
-      title: data.title,
-      content: data.content,
-      task: data.task ? {
-        isCompleted: data.task.isCompleted ?? false,
-        dueAt: data.task.dueAt ? toDate(data.task.dueAt) : undefined,
-      } : undefined,
-      finance: data.finance ? {
-        type: data.finance.type,
-        amount: data.finance.amount,
-        currency: data.finance.currency || "IDR",
-        occurredAt: toDate(data.finance.occurredAt),
-      } : undefined,
-      note: data.note ? {
-        noteType: data.note.noteType || "general",
-      } : undefined,
-      aiConfidence: data.aiConfidence,
-      createdAt: toDate(data.createdAt),
-      updatedAt: toDate(data.updatedAt),
-    } as Item;
-  });
+  const items = snapshot.docs.map(docSnap => mapDocToItem(docSnap.id, docSnap.data(), category));
 
   // Sort in memory to avoid requiring a Firestore composite index
   return items.sort((a, b) => {
@@ -80,33 +97,7 @@ export async function getAllItems(userId: string): Promise<Item[]> {
     const categoryCol = collections[index];
     const category = categoryCol === "tasks" ? "task" : categoryCol === "notes" ? "note" : "finance";
 
-    return snapshot.docs.map(docSnap => {
-      const data = docSnap.data();
-      return {
-        id: docSnap.id,
-        userId: data.userId,
-        dumpId: data.dumpId,
-        category: category,
-        title: data.title,
-        content: data.content,
-        task: data.task ? {
-          isCompleted: data.task.isCompleted ?? false,
-          dueAt: data.task.dueAt ? toDate(data.task.dueAt) : undefined,
-        } : undefined,
-        finance: data.finance ? {
-          type: data.finance.type,
-          amount: data.finance.amount,
-          currency: data.finance.currency || "IDR",
-          occurredAt: toDate(data.finance.occurredAt),
-        } : undefined,
-        note: data.note ? {
-          noteType: data.note.noteType || "general",
-        } : undefined,
-        aiConfidence: data.aiConfidence,
-        createdAt: toDate(data.createdAt),
-        updatedAt: toDate(data.updatedAt),
-      } as Item;
-    });
+    return snapshot.docs.map(docSnap => mapDocToItem(docSnap.id, docSnap.data(), category));
   });
 
   return items.sort((a, b) => {
@@ -128,20 +119,7 @@ export async function updateItem(userId: string, itemId: string, category: ItemC
 export async function getDumps(userId: string): Promise<Dump[]> {
   const q = query(collection(db, "users", userId, "dumps"));
   const snapshot = await getDocs(q);
-  const dumps = snapshot.docs.map(docSnap => {
-    const data = docSnap.data();
-    return {
-      id: docSnap.id,
-      userId: data.userId,
-      sourceType: data.sourceType,
-      rawText: data.rawText,
-      transcript: data.transcript,
-      mediaPath: data.mediaPath,
-      status: data.status,
-      createdAt: toDate(data.createdAt),
-      updatedAt: toDate(data.updatedAt),
-    } as Dump;
-  });
+  const dumps = snapshot.docs.map(docSnap => mapDocToDump(docSnap.id, docSnap.data()));
   return dumps.sort((a, b) => {
     const timeA = a.createdAt?.getTime() || 0;
     const timeB = b.createdAt?.getTime() || 0;
@@ -153,18 +131,7 @@ export async function getDumpById(userId: string, dumpId: string): Promise<Dump 
   const docRef = doc(db, "users", userId, "dumps", dumpId);
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) return null;
-  const data = docSnap.data();
-  return {
-    id: docSnap.id,
-    userId: data.userId,
-    sourceType: data.sourceType,
-    rawText: data.rawText,
-    transcript: data.transcript,
-    mediaPath: data.mediaPath,
-    status: data.status,
-    createdAt: toDate(data.createdAt),
-    updatedAt: toDate(data.updatedAt),
-  } as Dump;
+  return mapDocToDump(docSnap.id, docSnap.data());
 }
 
 export async function getItemsByDumpId(userId: string, dumpId: string): Promise<Item[]> {
@@ -211,4 +178,38 @@ export async function getItemsByDumpId(userId: string, dumpId: string): Promise<
     const timeB = b.createdAt?.getTime() || 0;
     return timeB - timeA;
   });
+}
+
+export async function deleteDump(userId: string, dumpId: string) {
+  await deleteDoc(doc(db, "users", userId, "dumps", dumpId));
+}
+
+export async function getDumpsPaged(
+  userId: string,
+  pageSize: number,
+  lastDoc: DocumentSnapshot | null
+): Promise<{ dumps: Dump[]; lastDoc: DocumentSnapshot | null }> {
+  let q = query(
+    collection(db, "users", userId, "dumps"),
+    orderBy("createdAt", "desc"),
+    limit(pageSize)
+  );
+
+  if (lastDoc) {
+    q = query(
+      collection(db, "users", userId, "dumps"),
+      orderBy("createdAt", "desc"),
+      startAfter(lastDoc),
+      limit(pageSize)
+    );
+  }
+
+  const snapshot = await getDocs(q);
+  const dumps = snapshot.docs.map((docSnap) => mapDocToDump(docSnap.id, docSnap.data()));
+  const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
+
+  return {
+    dumps,
+    lastDoc: lastVisible,
+  };
 }

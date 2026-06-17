@@ -164,7 +164,7 @@ export default function NotesPage() {
                   </CardContent>
                 </div>
                 <div className="px-4 pb-4 pt-0">
-                  <p className="text-[10px] text-muted-foreground font-medium">
+                  <p className="text-[10px] text-muted-foreground font-medium" suppressHydrationWarning>
                     {new Date(note.createdAt).toLocaleString(undefined, {
                       month: "short",
                       day: "numeric",

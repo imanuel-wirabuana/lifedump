@@ -105,56 +105,56 @@ Stores general notes or journals.
 
 ## 4. Workflows & Core Mechanisms
 
-### Workflow A: AI Categorization & Extraction
+### Workflow A: AI Categorization & Extraction (Background Processing)
 ```mermaid
 sequenceDiagram
     participant User as User UI
     participant WebSpeech as Web Speech API
-    participant Store as Zustand Store
-    participant API as /api/categorize (Next.js)
+    participant API as /api/trigger-categorize (Next.js)
+    participant Trigger as Trigger.dev Job
     participant Kilo as Kilo AI Gateway
+    participant FS as Firestore
 
     User->>WebSpeech: Speak to Mic (optional)
     WebSpeech->>User: Transcribe Voice to Input
-    User->>Store: Enter Text (CurrentInputText)
-    User->>Store: Click "Dump"
-    Store->>API: POST /api/categorize { text }
-    API->>Kilo: generateObject({ prompt, schema })
-    Kilo->>API: Structured JSON response
-    API->>Store: Return JSON list of items
-    Store->>User: Open Confirmation Drawer (needs_review)
+    User->>API: Click "Dump" (POST /api/trigger-categorize { text })
+    API->>FS: Create Dump Doc (status: "processing")
+    API->>Trigger: Trigger Job "categorize-dump"
+    API->>User: Return dumpId immediately (202 Accepted)
+    User->>User: Display Sonner loading toast, clear input
+    Trigger->>Kilo: Run LLM parser generateObject({ prompt, schema })
+    Kilo->>Trigger: Return structured JSON items
+    Trigger->>FS: Update Dump Doc (status: "needs_review", extractedItems)
+    FS->>User: Firestore real-time listener updates Sonner toast to Success
 ```
 
 1.  **Input Submission**: The user writes in `UniversalInput` or uses the Microphone button (which hooks into the browser's native `SpeechRecognition` API).
-2.  **API Call**: The client issues a POST request to `/api/categorize` passing `{ text }`.
-3.  **LLM Parsing**: The server-side API handler formats the current timestamp into the **Jakarta timezone (Asia/Jakarta)** and passes it to the Vercel AI SDK. It queries the `kilo-auto/free` model via Kilo AI Gateway, instructing it to parse relative dates/times (supporting both date and time) relative to the Jakarta context and format all output timestamps with a **+07:00 offset**, under a strict `Zod` schema:
-    ```typescript
-    const categorizeSchema = z.object({
-      items: z.array(
-        z.object({
-          category: z.enum(["task", "finance", "note"]),
-          title: z.string(),
-          content: z.string(),
-          dueAt: z.string().nullable().optional(),
-          financeType: z.enum(["expense", "income"]).optional(),
-          amount: z.number().optional(),
-          currency: z.literal("IDR").optional(),
-          occurredAt: z.string().optional(),
-          confidence: z.number(),
-          needsClarification: z.boolean(),
-        })
-      ),
-      assumptions: z.array(z.string()).optional(),
-    })
-    ```
-4.  **Pending State**: The structured response items are mapped via `mapApiItemsToPendingItems` into the Zustand store (`extractedItems`), shifting `dumpStatus` to `"needs_review"`.
+2.  **Trigger Request**: The client issues a POST request to `/api/trigger-categorize` passing `{ text }`.
+3.  **Dump Document Initialization**: The server-side API handler creates a dump document in the `users/{userId}/dumps` collection with `status: "processing"` and the `rawText`. It triggers the Trigger.dev background task `categorize-dump` and returns the `dumpId` immediately with HTTP status 202.
+4.  **UI Feedback**: The client immediately clears the text input. The global `<DumpProcessingListener />` listens in real-time to the dump status. It fires a `toast.loading("Organizing your dump...")` using Sonner.
+5.  **Trigger.dev Worker Processing**: The background worker calls Vercel AI SDK querying the `kilo-auto/free` model via Kilo AI Gateway. It parses Jakarta timezone-localized relative times and dates, and extracts structured items.
+6.  **Firestore Write**: The background worker updates the dump document with `status: "needs_review"` and saving the `extractedItems` array, then finishes.
+7.  **Real-time Synchronization**: The client's global listener receives the status update (`needs_review`) and upgrades the Sonner loading toast to a success toast with a "Review" button.
 
-### Workflow B: Review & Refinement (AI Loop)
-1.  **View Drafts**: The `ConfirmationDrawer` displays the parsed items. The user can review the proposed category, title, due dates, amounts, etc.
-2.  **AI Refinement Prompt**: If the categorization is incorrect or needs adjustments, the user writes correction instructions (e.g., *"Change item 2 to income instead"* or *"Set due date to next Friday"*).
-3.  **Refine Request**: The client posts to `/api/categorize` sending the original `text`, the current draft `items`, and the user's `feedback` prompt.
-4.  **Refined Response**: The Kilo model reviews the existing items, applies the feedback adjustments, and returns an updated structured list.
-5.  **Remove & Confirm**: Users can manually delete items using a trash button or click "Confirm All" to write them to Firestore. Saving is done as a Firestore Batch transaction via `saveDumpAndItems` inside `lib/firestore.ts`.
+### Workflow B: Review & Refinement (Confirmation Drawer)
+1.  **Inspect Extracted Items**: The user clicks the toast "Review" or clicks a dump card in the "Recent Dumps" list with a `"needs_review"` badge to open the global `<ConfirmationDrawer />`.
+2.  **Refine & Modify**: The user can remove unwanted items using the trash icon. If they write a revision instruction/feedback:
+    *   The client issues a POST request to `/api/trigger-refine` passing `{ dumpId, feedback, currentItems }`.
+    *   The server updates the dump document status back to `"processing"`. This closes the drawer globally and shows the global background loading toast.
+    *   A Trigger.dev worker runs the refinement task using the Kilo AI Gateway, updates `extractedItems` on the dump doc, and shifts the status back to `"needs_review"`.
+    *   The client's real-time listener updates the loading toast to a success toast, allowing the user to reopen the drawer and review the refined items.
+3.  **Confirm & Save**: Clicking "Confirm All" calls `confirmDumpAndItems` which executes a batch transaction writing the confirmed items to their category subcollections (`tasks`, `finances`, or `notes`), updates the dump document's status to `"confirmed"`, and clears `extractedItems`.
+4.  **Instant Refresh**: The query cache is invalidated, immediately updating the home dashboard stats and lists.
+5.  **Inspect Confirmed Dumps**: Clicking a confirmed dump in the "Recent Dumps" list navigates to `/dumps/[id]`, which displays the final confirmed/extracted items that belong to that dump.
+
+### Workflow C: Real-time Database Synchronization
+1.  **Subscription Activation**: When the authenticated user logs in, `<FirestoreRealtimeSync />` initiates live `onSnapshot` connections to the user's Firestore collections (`dumps`, `tasks`, `finances`, and `notes`).
+2.  **Cache Syncing**: When any Firestore document changes:
+    *   The listener parses the raw documents into structured objects using `mapDocToDump` or `mapDocToItem`.
+    *   The parsed list is sorted chronologically (latest first).
+    *   The listener updates the corresponding TanStack React Query cache key directly (e.g. `["dumps", userId]`, `["items", userId, "task"]`).
+    *   For items (`tasks`, `finances`, `notes`), the component maintains reference caches of each collection, and automatically merges and sorts them to update the master list cache key `["items", userId]`.
+3.  **UI Updates**: Any page or component listening to these React Query keys (like the Home Dashboard, Tasks Page, or Finance Page) automatically receives the updated cache and re-renders immediately, without requiring manual query invalidations or page reloads.
 
 ---
 
@@ -171,13 +171,19 @@ lifedump/
 │   │   │   └── page.tsx        # Financial Ledger, Cashflow Statistics & savings progress
 │   │   ├── notes/
 │   │   │   └── page.tsx        # Searchable grid of general/journal notes with filters
+│   │   ├── review/
+│   │   │   └── page.tsx        # Lists pending dumps that require review; triggers global ConfirmationDrawer
 │   │   ├── tasks/
 │   │   │   └── page.tsx        # Active and Completed task management lists
-│   │   ├── layout.tsx          # Auth wrapper; Header, Main layout container, and Bottom Nav
+│   │   ├── layout.tsx          # Auth wrapper; Header (with Bell notifications), Main layout container, and Bottom Nav
 │   │   └── page.tsx            # Main dashboard: statistics overview, input panel, recent feed
 │   ├── api/
-│   │   └── categorize/
-│   │       └── route.ts        # AI categorization API utilizing Vercel AI SDK and Kilo AI Gateway
+│   │   ├── categorize/
+│   │   │   └── route.ts        # AI categorization API utilizing Vercel AI SDK and Kilo AI Gateway
+│   │   ├── trigger-categorize/
+│   │   │   └── route.ts        # Initiates background processing and triggers Trigger.dev task
+│   │   └── trigger-refine/
+│   │       └── route.ts        # Updates dump status to processing and triggers background refinement task
 │   ├── sign-in/
 │   │   └── [[...sign-in]]/     # Clerk Authentication pages
 │   ├── sign-up/
@@ -188,7 +194,9 @@ lifedump/
 │   ├── ui/                     # Subdirectory for individual Shadcn elements
 │   ├── bottom-nav.tsx          # Bottom tab navbar with routing active states
 │   ├── confirmation-drawer.tsx # Vaul drawer for review, edit, and refinement of pending items
+│   ├── dump-processing-listener.tsx # Global background job status listener using Sonner toasts
 │   ├── edit-dialog.tsx         # Dialog interface to update individual item parameters
+│   ├── firestore-realtime-sync.tsx # Global Firestore onSnapshot cache synchronizer
 │   ├── header.tsx              # Top app navigation containing title, theme switch, user profile
 │   ├── providers.tsx           # Wraps application with QueryClientProvider
 │   ├── theme-provider.tsx      # Theme toggle contexts & keypress hotkeys
@@ -204,10 +212,13 @@ lifedump/
 │   └── utils.ts                # Utility class name merge helper (cn)
 ├── store/                      # Zustand Local States
 │   └── use-dump-store.ts       # Central store managing current input text, pending items list, status
+├── trigger/                    # Trigger.dev background worker jobs directory
+│   └── categorize.ts           # Durable AI categorization extraction task
 ├── AGENTS.md                   # System rules and instructions file for Agent environments
 ├── components.json             # Shadcn configuration file
 ├── next.config.ts              # Next.js specific settings
 ├── package.json                # Project dependencies and operational scripts
+├── trigger.config.ts           # Trigger.dev integration configuration settings
 └── tsconfig.json               # Typescript compilation settings
 ```
 
@@ -221,7 +232,7 @@ lifedump/
     *   Notes count.
     *   Net cashflow (total income minus total expenses) formatted for IDR currency.
 *   **Main Input**: Embeds `<UniversalInput />` to accept new entries.
-*   **Recent Dumps Feed**: Pulls the most recent 4 raw dumps using a React Query cache lookup to `getDumps`. Displays the raw text of each dump, its source type, creation time, and preview badges of all generated items. Clicking a dump navigates to `/dumps/[id]`.
+*   **Recent Dumps Feed**: Displays user dumps in a paginated list using React Query's `useInfiniteQuery` with Firestore cursor-based pagination. Features automatic scroll-to-load with a fallback "Load More" action. Displays the raw text of each dump, its source type, creation time, preview badges of all generated items, and a delete action button. Clicking a dump navigates to `/dumps/[id]`.
 
 ### `app/(app)/dumps/[id]/page.tsx` (Dump Detail Page)
 *   **Header**: Features a back-navigation link to return to the home dashboard.
@@ -247,6 +258,18 @@ lifedump/
 *   Queries `getItemsByCategory(userId, 'note')`.
 *   Provides a search bar that checks note title and content body text.
 *   Provides filter tabs to view: *All*, *General* notes, or *Journal* entries.
+
+### `app/(app)/review/page.tsx` (Review Dashboard)
+*   Queries `getDumps(userId)`.
+*   Filters for dumps with status `"needs_review"`.
+*   Displays raw dump contents along with their extracted item counts.
+*   Clicking a card opens the global `ConfirmationDrawer` to finalize review.
+*   Shows a beautiful empty check state when all reviews are completed.
+
+### `components/header.tsx` (Header Nav & Notifications)
+*   Includes Clerk user session info and theme toggle button.
+*   Includes a `Bell` icon that navigates to `/review`.
+*   Includes a real-time reactive notification dot (pulsing rose-colored badge) that appears over the bell icon if there are any dumps in the query list with a `"needs_review"` status.
 
 ### `components/theme-provider.tsx` (Theme Engine)
 *   Integrates `next-themes` with `attribute="class"`.

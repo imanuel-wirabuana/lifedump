@@ -17,6 +17,7 @@
     "@base-ui/react": "^1.5.0",
     "@clerk/nextjs": "^7.5.3",
     "@tanstack/react-query": "^5.101.0",
+    "@trigger.dev/sdk": "4.4.6",
     "ai": "^6.0.206",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

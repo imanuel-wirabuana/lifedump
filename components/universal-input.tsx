@@ -79,30 +79,24 @@ export function UniversalInput() {
       setIsListening(false);
     }
 
+    const textToSubmit = currentInputText;
+    setCurrentInputText("");
     setIsSubmitting(true);
-    setDumpStatus("processing");
 
     try {
-      const response = await fetch("/api/categorize", {
+      const response = await fetch("/api/trigger-categorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: currentInputText }),
+        body: JSON.stringify({ text: textToSubmit }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to categorize text");
+        throw new Error("Failed to submit dump");
       }
-
-      const data = await response.json();
-
-      // Transform flat API response into the nested PendingItem shape
-      const items = mapApiItemsToPendingItems(data.items);
-
-      setExtractedItems(items);
-      setDumpStatus("needs_review");
     } catch (error) {
       console.error(error);
-      setDumpStatus("failed");
+      // Put the text back if it failed to submit
+      setCurrentInputText(textToSubmit);
     } finally {
       setIsSubmitting(false);
     }

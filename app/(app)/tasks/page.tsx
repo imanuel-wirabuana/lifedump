@@ -129,6 +129,7 @@ export default function TasksPage() {
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       {task.task?.dueAt && (
                         <span
+                          suppressHydrationWarning
                           className={cn(
                             "text-[10px] inline-flex items-center gap-1 font-medium",
                             isOverdue

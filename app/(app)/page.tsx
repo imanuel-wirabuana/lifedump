@@ -1,19 +1,20 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { getAllItems, deleteItem, updateItemTask, getDumps } from "@/lib/queries";
+import { getAllItems, deleteItem, updateItemTask, getDumps, getDumpsPaged, deleteDump } from "@/lib/queries";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useDumpStore } from "@/store/use-dump-store";
 import { UniversalInput } from "@/components/universal-input";
-import { ConfirmationDrawer } from "@/components/confirmation-drawer";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { CheckSquare, DollarSign, FileText, Trash2, Calendar, TrendingUp, NotebookTabs, Pencil } from "lucide-react";
+import { CheckSquare, DollarSign, FileText, Trash2, Calendar, TrendingUp, NotebookTabs, Pencil, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
 import { Item, ItemCategory } from "@/lib/types";
@@ -34,6 +35,8 @@ function formatRelativeTime(date: Date): string {
 export default function Home() {
   const { userId } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const { setCurrentInputText, setExtractedItems, setCurrentDumpId, setDumpStatus } = useDumpStore();
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
@@ -43,10 +46,26 @@ export default function Home() {
     enabled: !!userId,
   });
 
-  const { data: dumps, isLoading: isLoadingDumps } = useQuery({
-    queryKey: ["dumps", userId],
-    queryFn: () => getDumps(userId!),
+  const {
+    data: dumpsData,
+    isLoading: isLoadingDumps,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["dumps-infinite", userId],
+    queryFn: ({ pageParam }) => getDumpsPaged(userId!, 5, pageParam),
+    initialPageParam: null as any,
+    getNextPageParam: (lastPage) => lastPage.lastDoc,
     enabled: !!userId,
+  });
+
+  const deleteDumpMutation = useMutation({
+    mutationFn: (dumpId: string) => deleteDump(userId!, dumpId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dumps-infinite", userId] });
+      queryClient.invalidateQueries({ queryKey: ["dumps", userId] });
+    },
   });
 
   const toggleMutation = useMutation({
@@ -63,6 +82,32 @@ export default function Home() {
       queryClient.invalidateQueries({ queryKey: ["items", userId] });
     },
   });
+
+  // Infinite Scroll Intersection Observer
+  const observerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          fetchNextPage();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentTarget = observerRef.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
+      }
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Derived Stats
   const activeTasksCount = items?.filter((i) => i.category === "task" && !i.task?.isCompleted).length || 0;
@@ -91,7 +136,7 @@ export default function Home() {
     },
   };
 
-  const recentDumps = dumps?.slice(0, 4) || [];
+  const recentDumps = dumpsData?.pages.flatMap((page) => page.dumps) || [];
 
   return (
     <div className="flex flex-col p-4 md:p-8 max-w-2xl mx-auto w-full pt-8 gap-8">
@@ -189,20 +234,83 @@ export default function Home() {
               const dumpItems = items?.filter((item) => item.dumpId === dump.id) || [];
 
               return (
-                <Link href={`/dumps/${dump.id}`} key={dump.id} className="block">
-                  <Card className="border-border/50 shadow-sm hover:border-border transition-all duration-200 hover:-translate-y-[2px] cursor-pointer group hover:shadow-md">
+                <div
+                  key={dump.id}
+                  onClick={() => {
+                    if (dump.status === "needs_review") {
+                      setCurrentInputText(dump.rawText || "");
+                      setExtractedItems(dump.extractedItems || []);
+                      setCurrentDumpId(dump.id);
+                      setDumpStatus("needs_review");
+                    } else {
+                      router.push(`/dumps/${dump.id}`);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      if (dump.status === "needs_review") {
+                        setCurrentInputText(dump.rawText || "");
+                        setExtractedItems(dump.extractedItems || []);
+                        setCurrentDumpId(dump.id);
+                        setDumpStatus("needs_review");
+                      } else {
+                        router.push(`/dumps/${dump.id}`);
+                      }
+                    }
+                  }}
+                  tabIndex={0}
+                  className="block cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
+                >
+                  <Card className="border-border/50 shadow-sm hover:border-border transition-all duration-200 hover:-translate-y-[2px] group hover:shadow-md">
                     <CardContent className="p-4 flex flex-col gap-3">
                       <div className="flex items-start justify-between gap-4">
                         <p className="font-medium text-sm text-foreground/90 line-clamp-2 flex-1 italic pl-3 border-l-2 border-primary/20">
                           "{dump.rawText || "Empty dump"}"
                         </p>
-                        <Badge variant="outline" className="text-[10px] shrink-0 font-medium capitalize h-5 px-1.5">
-                          {dump.sourceType}
-                        </Badge>
+                         <div className="flex gap-1.5 shrink-0 items-center">
+                          {dump.status === "needs_review" && (
+                            <Badge variant="default" className="text-[10px] font-bold bg-indigo-500 hover:bg-indigo-600 text-white h-5 px-1.5 animate-pulse">
+                              Needs Review
+                            </Badge>
+                          )}
+                          {dump.status === "processing" && (
+                            <Badge variant="secondary" className="text-[10px] font-medium h-5 px-1.5">
+                              Processing...
+                            </Badge>
+                          )}
+                          {dump.status === "failed" && (
+                            <Badge variant="destructive" className="text-[10px] font-medium h-5 px-1.5">
+                              Failed
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className="text-[10px] shrink-0 font-medium capitalize h-5 px-1.5">
+                            {dump.sourceType}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={deleteDumpMutation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm("Are you sure you want to delete this dump?")) {
+                                deleteDumpMutation.mutate(dump.id);
+                              }
+                            }}
+                            className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md shrink-0"
+                            title="Delete Dump"
+                          >
+                            {deleteDumpMutation.isPending && deleteDumpMutation.variables === dump.id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="size-3.5" />
+                            )}
+                          </Button>
+                        </div>
                       </div>
 
                       <div className="flex items-center justify-between pt-2 border-t border-border/40">
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground" suppressHydrationWarning>
                           {formatRelativeTime(dump.createdAt)}
                         </span>
 
@@ -231,9 +339,27 @@ export default function Home() {
                       </div>
                     </CardContent>
                   </Card>
-                </Link>
+                </div>
               );
             })}
+
+            {/* Infinite Scroll Sentinel & Loader */}
+            <div ref={observerRef} className="py-4 w-full flex items-center justify-center">
+              {isFetchingNextPage ? (
+                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              ) : hasNextPage ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => fetchNextPage()}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Load More
+                </Button>
+              ) : (
+                <span className="text-xs text-muted-foreground/40 font-medium">All dumps loaded</span>
+              )}
+            </div>
           </div>
         ) : (
           <Empty className="border-border/40 py-8">
@@ -248,7 +374,6 @@ export default function Home() {
         )}
       </div>
 
-      <ConfirmationDrawer />
       <EditDialog
         item={editingItem}
         isOpen={isEditOpen}
