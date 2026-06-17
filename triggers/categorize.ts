@@ -1,11 +1,9 @@
 import { task } from "@trigger.dev/sdk";
 import { generateObject } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { z } from "zod";
 import { db } from "@/services/firebase";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { stripUndefined } from "@/lib/utils";
 
 // Schema for categorization
 const categorizeSchema = z.object({
@@ -31,10 +29,6 @@ const categorizeSchema = z.object({
 const kilo = createOpenAI({
   baseURL: "https://api.kilo.ai/api/gateway",
   apiKey: process.env.KILO_API_KEY || "",
-});
-
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || "",
 });
 
 // Function to salvage items in case of validation failures
@@ -79,69 +73,56 @@ async function executeAIStep(prompt: string): Promise<any[]> {
     });
     resultObject = object;
   } catch (error: any) {
-    console.warn("generateObject with kilo-auto/free failed. Attempting fallback to gemini-1.5-flash...", error);
-    try {
-      const { object } = await generateObject({
-        model: google("gemini-1.5-flash"),
-        maxRetries: 1,
-        schema: categorizeSchema,
-        system: "You are a data extraction AI. You MUST output a JSON object matching the provided schema. The JSON object must contain an 'items' array as the root key. Never return a single item directly at the root; always wrap it in the 'items' array. All dates and times must be generated in the Asia/Jakarta timezone and formatted with +07:00 offset.",
-        prompt,
-      });
-      resultObject = object;
-    } catch (fallbackError: any) {
-      console.warn("Fallback to gemini-1.5-flash also failed. Attempting salvage on original error...", fallbackError);
-      let errorText = error.text || error.response?.body?.text || error.response?.text || "";
-      
-      if (!errorText && error.cause && typeof error.cause.message === "string") {
-        errorText = error.cause.message;
-      }
-      if (!errorText && error.message) {
-        errorText = error.message;
-      }
+    console.warn("generateObject failed. Attempting salvage...", error);
+    let errorText = error.text || error.response?.body?.text || error.response?.text || "";
+    
+    if (!errorText && error.cause && typeof error.cause.message === "string") {
+      errorText = error.cause.message;
+    }
+    if (!errorText && error.message) {
+      errorText = error.message;
+    }
 
-      if (errorText) {
-        try {
-          const jsonMatch = errorText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            
-            let salvagedItems = extractItemsFromRaw(parsed);
-            
-            if (salvagedItems.length === 0 && typeof parsed === "object") {
-              for (const val of Object.values(parsed)) {
-                if (Array.isArray(val)) {
-                  salvagedItems = val;
-                  break;
-                }
-              }
-            }
-
-            if (salvagedItems.length > 0) {
-              const validatedItems = salvagedItems.map((item: any) => ({
-                category: item.category || "note",
-                title: item.title || "Untitled Item",
-                content: item.content || "",
-                dueAt: item.dueAt || null,
-                priority: item.priority || "none",
-                tags: Array.isArray(item.tags) ? item.tags : [],
-                financeType: item.financeType || null,
-                amount: typeof item.amount === "number" ? item.amount : null,
-                currency: item.currency || "IDR",
-                occurredAt: item.occurredAt || null,
-                confidence: typeof item.confidence === "number" ? item.confidence : 0.8,
-                needsClarification: typeof item.needsClarification === "boolean" ? item.needsClarification : false,
-              }));
-              resultObject = { items: validatedItems };
+    if (errorText) {
+      try {
+        const jsonMatch = errorText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+        const cleanJsonText = jsonMatch ? jsonMatch[0] : errorText;
+        const parsed = JSON.parse(cleanJsonText);
+        
+        let salvagedItems = extractItemsFromRaw(parsed);
+        
+        if (salvagedItems.length === 0 && typeof parsed === "object") {
+          for (const val of Object.values(parsed)) {
+            if (Array.isArray(val)) {
+              salvagedItems = val;
+              break;
             }
           }
-        } catch (salvageError) {
-          console.error("Salvage parsing failed:", salvageError);
         }
+
+        if (salvagedItems.length > 0) {
+          const validatedItems = salvagedItems.map((item: any) => ({
+            category: item.category || "note",
+            title: item.title || "Untitled Item",
+            content: item.content || "",
+            dueAt: item.dueAt || null,
+            priority: item.priority || "none",
+            tags: Array.isArray(item.tags) ? item.tags : [],
+            financeType: item.financeType || null,
+            amount: typeof item.amount === "number" ? item.amount : null,
+            currency: item.currency || "IDR",
+            occurredAt: item.occurredAt || null,
+            confidence: typeof item.confidence === "number" ? item.confidence : 0.8,
+            needsClarification: typeof item.needsClarification === "boolean" ? item.needsClarification : false,
+          }));
+          resultObject = { items: validatedItems };
+        }
+      } catch (salvageError) {
+        console.error("Salvage parsing failed:", salvageError);
       }
-      if (!resultObject) {
-        throw fallbackError;
-      }
+    }
+    if (!resultObject) {
+      throw error;
     }
   }
 
@@ -181,15 +162,20 @@ async function saveExtractedItems(dumpDocRef: any, items: any[]) {
       };
     }
 
+    const cleanObj: Record<string, any> = {};
     const merged = { ...base, ...extra };
-    return stripUndefined(merged);
+    for (const [k, v] of Object.entries(merged)) {
+      if (v !== undefined) cleanObj[k] = v;
+    }
+
+    return cleanObj;
   });
 
-  await updateDoc(dumpDocRef, stripUndefined({
+  await updateDoc(dumpDocRef, {
     status: "needs_review",
     extractedItems,
     updatedAt: serverTimestamp(),
-  }));
+  });
 }
 
 export const categorizeTask = task({

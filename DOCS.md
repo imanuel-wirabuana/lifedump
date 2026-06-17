@@ -104,15 +104,6 @@ Stores general notes or journals.
     *   `createdAt`: `Timestamp`
     *   `updatedAt`: `Timestamp`
 
-### Firestore Constraints & `undefined` Fields
-
-Firestore does not support writing `undefined` values (neither top-level nor nested inside objects or arrays). Writing `undefined` values causes Firestore to throw an `INVALID_ARGUMENT` exception.
-
-To ensure typesafety and prevent write failures:
-*   A recursive helper `stripUndefined` is implemented in [utils.ts](file:///c:/Users/901698/Desktop/.me/coding/lifedump/lib/utils.ts).
-*   `stripUndefined` recursively traverses plain objects and arrays to omit all key/value pairs where the value is `undefined`. It preserves instances of `Date` and Firestore `Timestamp` / `FieldValue`.
-*   All operations writing to Firestore (`setDoc`, `updateDoc`, and batch writes) must wrap updates using `stripUndefined`.
-
 ---
 
 ## 4. Workflows & Core Mechanisms
@@ -144,7 +135,7 @@ sequenceDiagram
 2.  **Trigger Request**: The client issues a POST request to `/api/trigger-categorize` passing `{ text }`.
 3.  **Dump Document Initialization**: The server-side API handler creates a dump document in the `users/{userId}/dumps` collection with `status: "processing"` and the `rawText`. It triggers the Trigger.dev background task `categorize-dump` and returns the `dumpId` immediately with HTTP status 202.
 4.  **UI Feedback**: The client immediately clears the text input. The global `<DumpProcessingListener />` listens in real-time to the dump status. It fires a `toast.loading("Organizing your dump...")` using Sonner.
-5.  **Trigger.dev Worker Processing**: The background worker calls Vercel AI SDK querying the `kilo-auto/free` model via Kilo AI Gateway. It parses Jakarta timezone-localized relative times and dates, and extracts structured items. If the Kilo AI Gateway fails (e.g. due to 429 Rate/Concurrency Limits), it automatically falls back to the Google Gemini model (`gemini-1.5-flash`) to perform the structured extraction. If both models fail, the worker runs a fallback "salvage" block that checks the error logs for valid JSON text via regex matching and attempts to parse and extract items safely.
+5.  **Trigger.dev Worker Processing**: The background worker calls Vercel AI SDK querying the `kilo-auto/free` model via Kilo AI Gateway. It parses Jakarta timezone-localized relative times and dates, and extracts structured items.
 6.  **Firestore Write**: The background worker updates the dump document with `status: "needs_review"` and saving the `extractedItems` array, then finishes.
 7.  **Real-time Synchronization**: The client's global listener receives the status update (`needs_review`) and upgrades the Sonner loading toast to a success toast with a "Review" button.
 
