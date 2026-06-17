@@ -86,6 +86,8 @@ export function ConfirmationDrawer() {
         title: item.title,
         content: item.content || "",
         dueAt: item.task?.dueAt ? new Date(item.task.dueAt).toISOString() : null,
+        priority: item.task?.priority || "none",
+        tags: item.task?.tags || [],
         financeType: item.finance?.type || null,
         amount: item.finance?.amount || null,
         currency: "IDR",
@@ -165,15 +167,41 @@ export function ConfirmationDrawer() {
                     </Badge>
                   </div>
 
-                  {item.category === "task" && item.task?.dueAt && (
-                    <p className="text-xs text-muted-foreground" suppressHydrationWarning>
-                      Due: {new Date(item.task.dueAt).toLocaleString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
+                  {item.category === "task" && (
+                    <div className="flex flex-col gap-1 mt-1 text-xs">
+                      {item.task?.dueAt && (
+                        <div className="text-muted-foreground" suppressHydrationWarning>
+                          <span className="font-medium">Due:</span> {new Date(item.task.dueAt).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                      )}
+                      {item.task?.priority && item.task.priority !== "none" && (
+                        <div>
+                          <span className="font-medium">Priority:</span>{" "}
+                          <span className={cn(
+                            "capitalize font-semibold",
+                            item.task.priority === "high" && "text-red-500",
+                            item.task.priority === "medium" && "text-amber-500",
+                            item.task.priority === "low" && "text-blue-500"
+                          )}>
+                            {item.task.priority}
+                          </span>
+                        </div>
+                      )}
+                      {item.task?.tags && item.task.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {item.task.tags.map((tag: string, tagIdx: number) => (
+                            <Badge key={tagIdx} variant="outline" className="text-[9px] py-0 px-1 border-muted bg-muted/40 font-mono">
+                              #{tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {item.category === "finance" && item.finance && (

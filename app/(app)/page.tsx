@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
 import { Item, ItemCategory } from "@/types";
 import { useItemsQuery, useUpdateItemMutation, useDeleteItemMutation } from "@/hooks/use-items";
-import { useDumpsInfiniteQuery, useDeleteDumpMutation } from "@/hooks/use-dumps";
+import { useDumpsQuery, useDeleteDumpMutation } from "@/hooks/use-dumps";
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -38,31 +38,30 @@ export default function Home() {
   const { setCurrentInputText, setExtractedItems, setCurrentDumpId, setDumpStatus } = useDumpStore();
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(5);
 
   const { data: items, isLoading } = useItemsQuery(userId);
 
-  const {
-    data: dumpsData,
-    isLoading: isLoadingDumps,
-    hasNextPage,
-    fetchNextPage,
-    isFetchingNextPage,
-  } = useDumpsInfiniteQuery(userId);
+  const { data: dumps, isLoading: isLoadingDumps } = useDumpsQuery(userId);
 
   const deleteDumpMutation = useDeleteDumpMutation(userId);
 
   const toggleMutation = useUpdateItemMutation(userId);
   const deleteMutation = useDeleteItemMutation(userId);
 
+  const confirmedDumps = dumps?.filter((dump) => dump.status === "confirmed") || [];
+  const recentDumps = confirmedDumps.slice(0, visibleCount);
+  const hasNextPage = confirmedDumps.length > visibleCount;
+
   // Infinite Scroll Intersection Observer
   const observerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!hasNextPage || isFetchingNextPage) return;
+    if (!hasNextPage) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          fetchNextPage();
+          setVisibleCount((prev) => prev + 5);
         }
       },
       { threshold: 0.1 }
@@ -78,7 +77,7 @@ export default function Home() {
         observer.unobserve(currentTarget);
       }
     };
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [hasNextPage]);
 
   // Derived Stats
   const activeTasksCount = items?.filter((i) => i.category === "task" && !i.task?.isCompleted).length || 0;
@@ -107,8 +106,7 @@ export default function Home() {
     },
   };
 
-  const recentDumps = (dumpsData?.pages.flatMap((page) => page.dumps) || [])
-    .filter((dump) => dump.status === "confirmed");
+
 
   return (
     <div className="flex flex-col p-4 md:p-8 max-w-2xl mx-auto w-full pt-8 gap-8">
@@ -200,7 +198,7 @@ export default function Home() {
               </Card>
             ))}
           </div>
-        ) : (recentDumps.length > 0 || (dumpsData && hasNextPage)) ? (
+        ) : confirmedDumps.length > 0 ? (
           <div className="flex flex-col gap-3">
             {recentDumps.map((dump) => {
               const dumpItems = items?.filter((item) => item.dumpId === dump.id) || [];
@@ -288,13 +286,11 @@ export default function Home() {
 
             {/* Infinite Scroll Sentinel & Loader */}
             <div ref={observerRef} className="py-4 w-full flex items-center justify-center">
-              {isFetchingNextPage ? (
-                <Loader2 className="size-5 animate-spin text-muted-foreground" />
-              ) : hasNextPage ? (
+              {hasNextPage ? (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => fetchNextPage()}
+                  onClick={() => setVisibleCount((prev) => prev + 5)}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
                   Load More

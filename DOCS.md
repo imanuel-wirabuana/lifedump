@@ -62,10 +62,13 @@ Stores items categorized as tasks.
     *   `dumpId`: `string` (references the dump document that generated this task)
     *   `category`: `"task"`
     *   `title`: `string`
-    *   `content`: `string` (mandatory task description)
+    *   `content`: `string` (optional task description)
     *   `task`:
         *   `isCompleted`: `boolean`
         *   `dueAt`: `Timestamp` (optional)
+        *   `priority`: `"none" | "low" | "medium" | "high"` (optional)
+        *   `tags`: `string[]` (optional)
+        *   `source`: `"manual" | "ai"` (optional)
     *   `aiConfidence`: `number`
     *   `createdAt`: `Timestamp`
     *   `updatedAt`: `Timestamp`
@@ -141,11 +144,20 @@ sequenceDiagram
 2.  **Refine & Modify**: The user can remove unwanted items using the trash icon. If they write a revision instruction/feedback:
     *   The client issues a POST request to `/api/trigger-refine` passing `{ dumpId, feedback, currentItems }`.
     *   The server updates the dump document status back to `"processing"`. This closes the drawer globally and shows the global background loading toast.
-    *   A Trigger.dev worker runs the refinement task using the Kilo AI Gateway, updates `extractedItems` on the dump doc, and shifts the status back to `"needs_review"`.
+    *   A Trigger.dev worker runs the refinement task (`refine-dump`) using the Kilo AI Gateway, updates `extractedItems` on the dump doc, and shifts the status back to `"needs_review"`.
     *   The client's real-time listener updates the loading toast to a success toast, allowing the user to reopen the drawer and review the refined items.
 3.  **Confirm & Save**: Clicking "Confirm All" calls `confirmDumpAndItems` which executes a batch transaction writing the confirmed items to their category subcollections (`tasks`, `finances`, or `notes`), updates the dump document's status to `"confirmed"`, and clears `extractedItems`.
 4.  **Instant Refresh**: The query cache is invalidated, immediately updating the home dashboard stats and lists.
 5.  **Inspect Confirmed Dumps**: Clicking a confirmed dump in the "Recent Dumps" list navigates to `/dumps/[id]`, which displays the final confirmed/extracted items that belong to that dump.
+
+### Workflow D: Failed Dump Redo
+1.  **Inspect Failed Dumps**: If a dump processing fails, it appears in `/review` with a `"failed"` status badge and error logs.
+2.  **Redo Request**: The user clicks "Redo" on the failed dump card, opening the Redo Dialog.
+3.  **Provide Context**: The user can edit the original `rawText` or supply additional instruction/feedback.
+4.  **Submit Redo**:
+    *   The client sends a POST request to `/api/trigger-redo` with `{ dumpId, rawText, feedback }`.
+    *   The API route updates the dump's status to `"processing"` (and updates the `rawText` if edited) and triggers the Trigger.dev task `redo-dump`.
+    *   The `redo-dump` worker runs the AI parsing using the updated context/feedback, updates the document status to `"needs_review"`, and lists the newly extracted items for confirmation.
 
 ### Workflow C: Real-time Database Synchronization
 1.  **Subscription Activation**: When the authenticated user logs in, `<FirestoreRealtimeSync />` initiates live `onSnapshot` connections to the user's Firestore collections (`dumps`, `tasks`, `finances`, and `notes`).
@@ -182,8 +194,12 @@ lifedump/
 │   │   │   └── route.ts        # AI categorization API utilizing Vercel AI SDK and Kilo AI Gateway
 │   │   ├── trigger-categorize/
 │   │   │   └── route.ts        # Initiates background processing and triggers Trigger.dev task
-│   │   └── trigger-refine/
-│   │       └── route.ts        # Updates dump status to processing and triggers background refinement task
+│   │   ├── trigger-refine/
+│   │   │   └── route.ts        # Updates dump status to processing and triggers background refinement task
+│   │   ├── trigger-redo/
+│   │   │   └── route.ts        # Updates dump status/text and triggers background redo task
+│   │   └── enhance-prompt/
+│   │       └── route.ts        # AI prompt enhancement endpoint utilizing Vercel AI SDK
 │   ├── sign-in/
 │   │   └── [[...sign-in]]/     # Clerk Authentication pages
 │   ├── sign-up/
@@ -201,7 +217,7 @@ lifedump/
 │   ├── providers.tsx           # Wraps application with QueryClientProvider
 │   ├── theme-provider.tsx      # Theme toggle contexts & keypress hotkeys
 │   ├── theme-toggle.tsx        # Icon trigger to change theme
-│   └── universal-input.tsx     # Smart input textarea with microphone toggle
+│   └── universal-input.tsx     # Smart input textarea with microphone, AI prompt enhancement, and submission buttons
 ├── hooks/                      # Custom React Hooks (React Query integration)
 │   ├── use-dumps.ts            # Custom hooks for fetching and deleting dumps
 │   └── use-items.ts            # Custom hooks for fetching, toggling, editing, and deleting items
@@ -236,7 +252,7 @@ lifedump/
     *   Notes count.
     *   Net cashflow (total income minus total expenses) formatted for IDR currency.
 *   **Main Input**: Embeds `<UniversalInput />` to accept new entries.
-*   **Recent Dumps Feed**: Displays user dumps in a paginated list using React Query's `useInfiniteQuery` with Firestore cursor-based pagination. Features automatic scroll-to-load with a fallback "Load More" action. Displays the raw text of each dump, its source type, creation time, preview badges of all generated items, and a delete action button. Clicking a dump navigates to `/dumps/[id]`.
+*   **Recent Dumps Feed**: Displays user dumps in a real-time list (`useDumpsQuery` synchronized via `<FirestoreRealtimeSync />`) with client-side local pagination. Features a "Load More" button to increment the visible slice of dumps. Displays raw text, source type, creation time, previews of generated items, and a delete action. Clicking a dump navigates to `/dumps/[id]`.
 
 ### `app/(app)/dumps/[id]/page.tsx` (Dump Detail Page)
 *   **Header**: Features a back-navigation link to return to the home dashboard.
@@ -251,6 +267,8 @@ lifedump/
 *   Queries `getItemsByCategory(userId, 'task')`.
 *   Splits items into **Active** and **Completed** lists inside separate tabs.
 *   **Overdue logic**: Computes if a task's due date is earlier than today (and incomplete) and flags it with a red warning badge.
+*   **Sorting & Filtering**: Supports filtering by `priority` level and custom `tags`. Supports sorting by `createdAt`, `dueDate`, `priority`, and `title`.
+*   **Visual Highlights**: Displays priority badges, tags list, reminder indicator, and AI source indicators.
 
 ### `app/(app)/finances/page.tsx` (Finance Dashboard)
 *   Queries `getItemsByCategory(userId, 'finance')`.
@@ -270,6 +288,7 @@ lifedump/
 *   Clicking a card with `"needs_review"` status opens the global `ConfirmationDrawer` to finalize review.
 *   For `"failed"` status dumps, displays the processing error message and a "Redo" button.
 *   Clicking "Redo" opens a dialog allowing the user to edit the original text and/or provide additional instruction/context (feedback), updating the raw text and sending a refinement request to retry the AI categorization.
+*   Features a Trash/Delete button on each dump card to permanently delete the dump (e.g. to discard processing/failed/reviewable dumps).
 *   Shows a beautiful empty check state when all reviews are completed.
 
 ### `components/header.tsx` (Header Nav & Notifications)

@@ -28,6 +28,9 @@ export type Item = {
   task?: {
     dueAt?: Date;
     isCompleted: boolean;
+    priority?: "none" | "low" | "medium" | "high";
+    tags?: string[];
+    source?: "manual" | "ai";
   };
   finance?: {
     type: "expense" | "income";

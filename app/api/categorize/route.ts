@@ -16,6 +16,8 @@ const categorizeSchema = z.object({
       title: z.string(),
       content: z.string(),
       dueAt: z.string().nullable().optional(),
+      priority: z.enum(["none", "low", "medium", "high"]).optional(),
+      tags: z.array(z.string()).optional(),
       financeType: z.enum(["expense", "income"]).optional(),
       amount: z.number().optional(),
       currency: z.literal("IDR").optional(),
@@ -107,6 +109,8 @@ Each object in the "items" array MUST represent a categorized item ('task', 'fin
 - title: a short, descriptive name/title
 - content: a description/details (mandatory for all categories, e.g., task description, reason/detail for finance transaction, or general note body). Cannot be null or empty.
 - dueAt: (for tasks) ISO 8601 string of the due date and time with Jakarta offset (e.g. 2026-06-17T10:00:00+07:00) based on the user's input, or null. Support both date and time!
+- priority: (for tasks) "none", "low", "medium", or "high". Default to "none" if not specified.
+- tags: (for tasks) array of lowercase contextual tag strings (e.g. ["work", "shopping", "home"]) extracted from the task context, or empty array.
 - financeType: (for finance) "expense" or "income", or null
 - amount: (for finance) numeric amount, or null
 - currency: (for finance) "IDR" or null
@@ -174,6 +178,8 @@ Please format all timestamps with Jakarta offset (+07:00).`;
               title: item.title || "Untitled Item",
               content: item.content || "",
               dueAt: item.dueAt || null,
+              priority: item.priority || "none",
+              tags: Array.isArray(item.tags) ? item.tags : [],
               financeType: item.financeType || null,
               amount: typeof item.amount === "number" ? item.amount : null,
               currency: item.currency || "IDR",

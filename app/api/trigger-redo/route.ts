@@ -12,14 +12,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { dumpId, feedback, currentItems } = await req.json();
+    const { dumpId, rawText, feedback } = await req.json();
 
     if (!dumpId) {
       return NextResponse.json({ error: "Dump ID is required" }, { status: 400 });
-    }
-
-    if (!feedback || !feedback.trim()) {
-      return NextResponse.json({ error: "Feedback prompt is required for refinement" }, { status: 400 });
     }
 
     // 1. Get the dump document to retrieve the raw text
@@ -30,24 +26,31 @@ export async function POST(req: Request) {
     }
     const dumpData = dumpDoc.data();
 
-    // 2. Update status back to "processing"
-    await updateDoc(dumpDocRef, {
+    // 2. Determine rawText and prepare update payload
+    let finalRawText = dumpData.rawText;
+    const updatePayload: Record<string, any> = {
       status: "processing",
       updatedAt: serverTimestamp(),
-    });
+    };
 
-    // 3. Trigger the Trigger.dev refine task
-    await tasks.trigger("refine-dump", {
+    if (rawText !== undefined && rawText !== null) {
+      updatePayload.rawText = rawText;
+      finalRawText = rawText;
+    }
+
+    await updateDoc(dumpDocRef, updatePayload);
+
+    // 3. Trigger the Trigger.dev redo task
+    await tasks.trigger("redo-dump", {
       dumpId,
       userId,
-      rawText: dumpData.rawText,
-      feedback: feedback.trim(),
-      currentItems: currentItems || [],
+      rawText: finalRawText,
+      feedback: feedback && feedback.trim() ? feedback : undefined,
     });
 
     return NextResponse.json({ dumpId, status: "processing" }, { status: 202 });
   } catch (error: any) {
-    console.error("Trigger Refine Error:", error);
+    console.error("Trigger Redo Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

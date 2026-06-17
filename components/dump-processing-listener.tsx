@@ -45,7 +45,6 @@ export function DumpProcessingListener() {
             delete activeToasts.current[dumpId];
             queryClient.invalidateQueries({ queryKey: ["items", userId] });
             queryClient.invalidateQueries({ queryKey: ["dumps", userId] });
-            queryClient.invalidateQueries({ queryKey: ["dumps-infinite", userId] });
             toast.success("Dump organized successfully!", {
               id: toastId,
               description: "Items categorized. Tap to review and save.",
@@ -64,7 +63,6 @@ export function DumpProcessingListener() {
             delete activeToasts.current[dumpId];
             queryClient.invalidateQueries({ queryKey: ["items", userId] });
             queryClient.invalidateQueries({ queryKey: ["dumps", userId] });
-            queryClient.invalidateQueries({ queryKey: ["dumps-infinite", userId] });
             toast.error("Failed to organize dump", {
               id: toastId,
               description: dump.error || "An error occurred during categorization.",

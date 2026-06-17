@@ -21,6 +21,9 @@ export function mapDocToItem(id: string, data: any, category: ItemCategory): Ite
     task: data.task ? {
       isCompleted: data.task.isCompleted ?? false,
       dueAt: data.task.dueAt ? toDate(data.task.dueAt) : undefined,
+      priority: data.task.priority || "none",
+      tags: data.task.tags || [],
+      source: data.task.source || "manual",
     } : undefined,
     finance: data.finance ? {
       type: data.finance.type,
@@ -144,33 +147,7 @@ export async function getItemsByDumpId(userId: string, dumpId: string): Promise<
     const categoryCol = collections[index];
     const category = categoryCol === "tasks" ? "task" : categoryCol === "notes" ? "note" : "finance";
 
-    return snapshot.docs.map(docSnap => {
-      const data = docSnap.data();
-      return {
-        id: docSnap.id,
-        userId: data.userId,
-        dumpId: data.dumpId,
-        category: category,
-        title: data.title,
-        content: data.content,
-        task: data.task ? {
-          isCompleted: data.task.isCompleted ?? false,
-          dueAt: data.task.dueAt ? toDate(data.task.dueAt) : undefined,
-        } : undefined,
-        finance: data.finance ? {
-          type: data.finance.type,
-          amount: data.finance.amount,
-          currency: data.finance.currency || "IDR",
-          occurredAt: toDate(data.finance.occurredAt),
-        } : undefined,
-        note: data.note ? {
-          noteType: data.note.noteType || "general",
-        } : undefined,
-        aiConfidence: data.aiConfidence,
-        createdAt: toDate(data.createdAt),
-        updatedAt: toDate(data.updatedAt),
-      } as Item;
-    });
+    return snapshot.docs.map(docSnap => mapDocToItem(docSnap.id, docSnap.data(), category));
   });
 
   return items.sort((a, b) => {
@@ -184,32 +161,4 @@ export async function deleteDump(userId: string, dumpId: string) {
   await deleteDoc(doc(db, "users", userId, "dumps", dumpId));
 }
 
-export async function getDumpsPaged(
-  userId: string,
-  pageSize: number,
-  lastDoc: DocumentSnapshot | null
-): Promise<{ dumps: Dump[]; lastDoc: DocumentSnapshot | null }> {
-  let q = query(
-    collection(db, "users", userId, "dumps"),
-    orderBy("createdAt", "desc"),
-    limit(pageSize)
-  );
 
-  if (lastDoc) {
-    q = query(
-      collection(db, "users", userId, "dumps"),
-      orderBy("createdAt", "desc"),
-      startAfter(lastDoc),
-      limit(pageSize)
-    );
-  }
-
-  const snapshot = await getDocs(q);
-  const dumps = snapshot.docs.map((docSnap) => mapDocToDump(docSnap.id, docSnap.data()));
-  const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
-
-  return {
-    dumps,
-    lastDoc: lastVisible,
-  };
-}

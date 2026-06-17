@@ -6,7 +6,10 @@ import { DumpSourceType, DumpStatus, ItemCategory } from "@/types";
 
 interface FirestoreTaskData {
   isCompleted: boolean;
-  dueAt?: Date;
+  dueAt?: Date | null;
+  priority?: "none" | "low" | "medium" | "high";
+  tags?: string[];
+  source?: "manual" | "ai";
 }
 
 interface FirestoreFinanceData {
@@ -146,6 +149,9 @@ export async function confirmDumpAndItems(
         extra.task = {
           isCompleted: !!item.task.isCompleted,
           dueAt: item.task.dueAt ? new Date(item.task.dueAt) : null,
+          priority: item.task.priority || "none",
+          tags: item.task.tags || [],
+          source: item.task.source || "ai",
         };
       }
       if (item.category === "finance" && item.finance) {

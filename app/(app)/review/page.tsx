@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { Check, ArrowLeft, Clock, Sparkles, Loader2 } from "lucide-react";
+import { Check, ArrowLeft, Clock, Sparkles, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useDumpsQuery } from "@/hooks/use-dumps";
+import { useDumpsQuery, useDeleteDumpMutation } from "@/hooks/use-dumps";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -43,6 +43,7 @@ export default function ReviewPage() {
   const { setCurrentInputText, setExtractedItems, setCurrentDumpId, setDumpStatus } = useDumpStore();
 
   const { data: dumps, isLoading } = useDumpsQuery(userId);
+  const deleteDumpMutation = useDeleteDumpMutation(userId);
 
   const [redoDump, setRedoDump] = useState<Dump | null>(null);
   const [redoRawText, setRedoRawText] = useState("");
@@ -54,7 +55,7 @@ export default function ReviewPage() {
     setIsSubmittingRedo(true);
 
     try {
-      const response = await fetch("/api/trigger-refine", {
+      const response = await fetch("/api/trigger-redo", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -182,6 +183,30 @@ export default function ReviewPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                        disabled={deleteDumpMutation.isPending}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (confirm("Are you sure you want to delete this dump?")) {
+                            try {
+                              await deleteDumpMutation.mutateAsync(dump.id);
+                              toast.success("Dump deleted successfully");
+                            } catch (err) {
+                              toast.error("Failed to delete dump");
+                            }
+                          }
+                        }}
+                      >
+                        {deleteDumpMutation.isPending && deleteDumpMutation.variables === dump.id ? (
+                          <Loader2 className="size-3.5 animate-spin text-destructive" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                      </Button>
+
                       {dump.status === "needs_review" && (
                         <>
                           <Badge variant="secondary" className="text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">

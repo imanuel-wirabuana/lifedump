@@ -131,7 +131,7 @@
     @apply font-sans;
   }
 }
-
 [data-sonner-toaster] {
-  bottom: calc(env(safe-area-inset-bottom) + 86px) !important;
+  top: calc(env(safe-area-inset-top) + 68px) !important;
+  bottom: auto !important;
 }

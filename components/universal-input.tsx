@@ -4,13 +4,15 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useDumpStore, PendingItem } from "@/stores/use-dump-store";
-import { Mic, MicOff } from "lucide-react";
+import { Mic, MicOff, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { mapApiItemsToPendingItems } from "@/services/mappers";
+import { toast } from "sonner";
 
 export function UniversalInput() {
   const { currentInputText, setCurrentInputText, setExtractedItems, setDumpStatus } = useDumpStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -70,6 +72,34 @@ export function UniversalInput() {
     setIsListening(true);
   }, [isListening, currentInputText, setCurrentInputText]);
 
+  const handleEnhance = async () => {
+    if (!currentInputText.trim()) return;
+    setIsEnhancing(true);
+
+    try {
+      const response = await fetch("/api/enhance-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: currentInputText }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to enhance prompt");
+      }
+
+      const data = await response.json();
+      if (data.enhancedText) {
+        setCurrentInputText(data.enhancedText);
+        toast.success("Prompt enhanced!");
+      }
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Failed to enhance prompt");
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!currentInputText.trim()) return;
 
@@ -111,17 +141,17 @@ export function UniversalInput() {
           className="min-h-[120px] resize-none border-0 p-0 focus-visible:ring-0 text-base"
           value={currentInputText}
           onChange={(e) => setCurrentInputText(e.target.value)}
-          disabled={isSubmitting}
+          disabled={isSubmitting || isEnhancing}
         />
         <div className="flex items-center justify-between mt-2">
-          <div>
+          <div className="flex items-center gap-2">
             {speechSupported && (
               <Button
                 type="button"
                 variant={isListening ? "destructive" : "outline"}
                 size="icon"
                 onClick={toggleListening}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isEnhancing}
                 className={cn(
                   "relative",
                   isListening && "animate-pulse"
@@ -130,8 +160,28 @@ export function UniversalInput() {
                 {isListening ? <MicOff /> : <Mic />}
               </Button>
             )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleEnhance}
+              disabled={isSubmitting || isListening || isEnhancing || !currentInputText.trim()}
+              className="gap-1.5 h-9 text-xs font-semibold hover:bg-accent transition-all duration-200"
+            >
+              {isEnhancing ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Enhancing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-3.5 text-primary" />
+                  Enhance
+                </>
+              )}
+            </Button>
           </div>
-          <Button onClick={handleSubmit} disabled={isSubmitting || !currentInputText.trim()}>
+          <Button onClick={handleSubmit} disabled={isSubmitting || isEnhancing || !currentInputText.trim()}>
             {isSubmitting ? "Processing..." : "Dump"}
           </Button>
         </div>

@@ -14,6 +14,9 @@ export function mapApiItemsToPendingItems(apiItems: any[]): PendingItem[] {
       item.task = {
         isCompleted: false,
         dueAt: raw.dueAt ? new Date(raw.dueAt) : undefined,
+        priority: raw.priority || "none",
+        tags: Array.isArray(raw.tags) ? raw.tags : [],
+        source: raw.source || "ai",
       };
     }
 
