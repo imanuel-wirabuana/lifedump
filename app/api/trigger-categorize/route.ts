@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/services/firebase";
 import { collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 
 export async function POST(req: Request) {
   const { userId } = await auth();

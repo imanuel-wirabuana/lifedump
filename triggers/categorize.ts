@@ -1,4 +1,4 @@
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { generateObject } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
