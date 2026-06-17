@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { getItemsByCategory, deleteItem } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,28 +11,19 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { FileText, Trash2, Search, Filter, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
-import { Item } from "@/lib/types";
+import { Item } from "@/types";
+import { useItemsByCategoryQuery, useDeleteItemMutation } from "@/hooks/use-items";
 
 export default function NotesPage() {
   const { userId } = useAuth();
-  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "general" | "journal">("all");
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
-  const { data: notes, isLoading } = useQuery({
-    queryKey: ["items", userId, "note"],
-    queryFn: () => getItemsByCategory(userId!, "note"),
-    enabled: !!userId,
-  });
+  const { data: notes, isLoading } = useItemsByCategoryQuery(userId, "note");
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteItem(userId!, id, "note"),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items", userId] });
-    },
-  });
+  const deleteMutation = useDeleteItemMutation(userId);
 
   if (isLoading) {
     return (
@@ -148,7 +137,7 @@ export default function NotesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => deleteMutation.mutate(note.id)}
+                        onClick={() => deleteMutation.mutate({ id: note.id, category: "note" })}
                         className="text-muted-foreground hover:text-destructive size-7 rounded-md"
                       >
                         <Trash2 className="size-3.5" />

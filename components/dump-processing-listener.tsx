@@ -4,10 +4,10 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db } from "@/services/firebase";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-import { useDumpStore } from "@/store/use-dump-store";
+import { useDumpStore } from "@/stores/use-dump-store";
 
 export function DumpProcessingListener() {
   const { userId } = useAuth();

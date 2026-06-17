@@ -3,10 +3,10 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { collection, query, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db } from "@/services/firebase";
 import { useQueryClient } from "@tanstack/react-query";
-import { mapDocToItem, mapDocToDump } from "@/lib/queries";
-import { Item, Dump } from "@/lib/types";
+import { mapDocToItem, mapDocToDump } from "@/services/queries";
+import { Item, Dump } from "@/types";
 
 export function FirestoreRealtimeSync() {
   const { userId } = useAuth();

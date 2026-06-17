@@ -2,9 +2,9 @@ import { task } from "@trigger.dev/sdk/v3";
 import { generateObject } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
-import { db } from "@/lib/firebase";
+import { db } from "@/services/firebase";
 import { collection, doc, writeBatch, serverTimestamp, updateDoc } from "firebase/firestore";
-import { ItemCategory } from "@/lib/types";
+import { ItemCategory } from "@/types";
 
 // Schema for categorization
 const categorizeSchema = z.object({

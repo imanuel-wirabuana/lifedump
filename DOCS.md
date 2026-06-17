@@ -202,18 +202,22 @@ lifedump/
 │   ├── theme-provider.tsx      # Theme toggle contexts & keypress hotkeys
 │   ├── theme-toggle.tsx        # Icon trigger to change theme
 │   └── universal-input.tsx     # Smart input textarea with microphone toggle
-├── hooks/                      # Custom React Hooks
-├── lib/                        # Shared Helpers, Database Clients, Types
+├── hooks/                      # Custom React Hooks (React Query integration)
+│   ├── use-dumps.ts            # Custom hooks for fetching and deleting dumps
+│   └── use-items.ts            # Custom hooks for fetching, toggling, editing, and deleting items
+├── lib/                        # Shared UI utilities
+│   └── utils.ts                # Utility class name merge helper (cn)
+├── services/                   # Backend services and mappers
 │   ├── firebase.ts             # Initializes client-side Firebase connections
 │   ├── firestore.ts            # Houses database write operations (batch saves)
 │   ├── mappers.ts              # Translates API schema structures into frontend Zustand types
-│   ├── queries.ts              # Handles Firestore read, update, and delete functions
-│   ├── types.ts                # Application typescript interface definitions
-│   └── utils.ts                # Utility class name merge helper (cn)
-├── store/                      # Zustand Local States
+│   └── queries.ts              # Handles Firestore read, update, and delete functions
+├── stores/                     # Zustand Global States
 │   └── use-dump-store.ts       # Central store managing current input text, pending items list, status
-├── trigger/                    # Trigger.dev background worker jobs directory
+├── triggers/                   # Trigger.dev background worker jobs directory
 │   └── categorize.ts           # Durable AI categorization extraction task
+├── types/                      # Application typescript interface definitions
+│   └── index.ts                # Common domain type signatures (Item, Dump, etc.)
 ├── AGENTS.md                   # System rules and instructions file for Agent environments
 ├── components.json             # Shadcn configuration file
 ├── next.config.ts              # Next.js specific settings

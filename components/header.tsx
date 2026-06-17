@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { UserButton, useAuth } from "@clerk/nextjs";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { useQuery } from "@tanstack/react-query";
-import { getDumps } from "@/lib/queries";
+import { useDumpsQuery } from "@/hooks/use-dumps";
 import { Bell } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -13,11 +12,7 @@ export function Header() {
   const { userId } = useAuth();
   const pathname = usePathname();
 
-  const { data: dumps } = useQuery({
-    queryKey: ["dumps", userId],
-    queryFn: () => getDumps(userId!),
-    enabled: !!userId,
-  });
+  const { data: dumps } = useDumpsQuery(userId);
 
   const hasNeedsReview = (dumps || []).some((dump) => dump.status === "needs_review");
   const isReviewActive = pathname === "/review";

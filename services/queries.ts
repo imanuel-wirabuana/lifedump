@@ -1,6 +1,6 @@
 import { collection, query, getDocs, doc, deleteDoc, updateDoc, Timestamp, getDoc, where, limit, startAfter, orderBy, DocumentSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
-import { Item, ItemCategory, Dump } from "./types";
+import { Item, ItemCategory, Dump } from "@/types";
 
 // Helper to safely convert Firestore Timestamp or any date-like value to a JS Date
 export function toDate(value: any): Date {

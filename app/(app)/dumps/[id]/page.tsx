@@ -1,9 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { getDumpById, getAllItems, deleteItem, updateItemTask } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,10 +11,12 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/
 import { CheckSquare, DollarSign, FileText, Trash2, Calendar, Pencil, ArrowLeft, Clock, FileDown, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
-import { Item, ItemCategory } from "@/lib/types";
+import { Item, ItemCategory } from "@/types";
 import { toast } from "sonner";
 import Link from "next/link";
-import { useDumpStore } from "@/store/use-dump-store";
+import { useDumpStore } from "@/stores/use-dump-store";
+import { useItemsQuery, useToggleItemTaskMutation, useDeleteItemMutation } from "@/hooks/use-items";
+import { useDumpByIdQuery } from "@/hooks/use-dumps";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -25,22 +25,13 @@ interface PageProps {
 export default function DumpDetailPage({ params }: PageProps) {
   const { id: dumpId } = use(params);
   const { userId } = useAuth();
-  const queryClient = useQueryClient();
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const { setCurrentInputText, setExtractedItems, setCurrentDumpId, setDumpStatus } = useDumpStore();
 
-  const { data: dump, isLoading: isLoadingDump } = useQuery({
-    queryKey: ["dump", dumpId, userId],
-    queryFn: () => getDumpById(userId!, dumpId),
-    enabled: !!userId && !!dumpId,
-  });
+  const { data: dump, isLoading: isLoadingDump } = useDumpByIdQuery(userId, dumpId);
 
-  const { data: items, isLoading: isLoadingItems } = useQuery({
-    queryKey: ["items", userId],
-    queryFn: () => getAllItems(userId!),
-    enabled: !!userId,
-  });
+  const { data: items, isLoading: isLoadingItems } = useItemsQuery(userId);
 
   const isNeedsReview = dump?.status === "needs_review";
   const isConfirmed = dump?.status === "confirmed";
@@ -57,22 +48,9 @@ export default function DumpDetailPage({ params }: PageProps) {
 
   const displayItems = items?.filter((item) => item.dumpId === dumpId) || [];
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, isCompleted }: { id: string; isCompleted: boolean }) =>
-      updateItemTask(userId!, id, isCompleted),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items", userId] });
-      toast.success("Task status updated");
-    },
-  });
+  const toggleMutation = useToggleItemTaskMutation(userId);
 
-  const deleteMutation = useMutation({
-    mutationFn: ({ id, category }: { id: string; category: ItemCategory }) => deleteItem(userId!, id, category),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items", userId] });
-      toast.success("Item deleted successfully");
-    },
-  });
+  const deleteMutation = useDeleteItemMutation(userId);
 
   const categoryConfig = {
     task: {

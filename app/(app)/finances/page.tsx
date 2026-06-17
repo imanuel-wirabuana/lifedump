@@ -1,8 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { getItemsByCategory, deleteItem } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,26 +12,17 @@ import { Progress } from "@/components/ui/progress";
 import { DollarSign, Trash2, ArrowDownLeft, ArrowUpRight, TrendingUp, Wallet, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
-import { Item } from "@/lib/types";
+import { Item } from "@/types";
+import { useItemsByCategoryQuery, useDeleteItemMutation } from "@/hooks/use-items";
 
 export default function FinancesPage() {
   const { userId } = useAuth();
-  const queryClient = useQueryClient();
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
-  const { data: records, isLoading } = useQuery({
-    queryKey: ["items", userId, "finance"],
-    queryFn: () => getItemsByCategory(userId!, "finance"),
-    enabled: !!userId,
-  });
+  const { data: records, isLoading } = useItemsByCategoryQuery(userId, "finance");
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteItem(userId!, id, "finance"),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items", userId] });
-    },
-  });
+  const deleteMutation = useDeleteItemMutation(userId);
 
   if (isLoading) {
     return (
@@ -146,7 +135,7 @@ export default function FinancesPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => deleteMutation.mutate(record.id)}
+                    onClick={() => deleteMutation.mutate({ id: record.id, category: "finance" })}
                     className="text-muted-foreground hover:text-destructive size-7 rounded-md"
                   >
                     <Trash2 className="size-3.5" />

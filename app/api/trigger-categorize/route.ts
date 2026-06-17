@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@/lib/firebase";
+import { db } from "@/services/firebase";
 import { collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { tasks } from "@trigger.dev/sdk/v3";
 

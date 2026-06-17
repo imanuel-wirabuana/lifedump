@@ -1,14 +1,14 @@
 "use client";
 
-import { useDumpStore } from "@/store/use-dump-store";
+import { useDumpStore } from "@/stores/use-dump-store";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerDescription } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { saveDumpAndItems, confirmDumpAndItems } from "@/lib/firestore";
-import { mapApiItemsToPendingItems } from "@/lib/mappers";
+import { saveDumpAndItems, confirmDumpAndItems } from "@/services/firestore";
+import { mapApiItemsToPendingItems } from "@/services/mappers";
 import { useAuth } from "@clerk/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";

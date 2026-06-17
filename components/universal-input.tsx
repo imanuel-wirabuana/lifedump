@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useDumpStore, PendingItem } from "@/store/use-dump-store";
+import { useDumpStore, PendingItem } from "@/stores/use-dump-store";
 import { Mic, MicOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { mapApiItemsToPendingItems } from "@/lib/mappers";
+import { mapApiItemsToPendingItems } from "@/services/mappers";
 
 export function UniversalInput() {
   const { currentInputText, setCurrentInputText, setExtractedItems, setDumpStatus } = useDumpStore();

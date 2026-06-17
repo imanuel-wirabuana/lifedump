@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Item } from "@/lib/types";
+import { Item } from "@/types";
 
 export type PendingItem = Omit<Item, "id" | "userId" | "dumpId" | "createdAt" | "updatedAt"> & {
   id?: string;

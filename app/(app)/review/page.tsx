@@ -1,9 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { getDumps } from "@/lib/queries";
-import { useDumpStore } from "@/store/use-dump-store";
+import { useDumpStore } from "@/stores/use-dump-store";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Check, ArrowLeft, Clock, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { useDumpsQuery } from "@/hooks/use-dumps";
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -29,11 +28,7 @@ export default function ReviewPage() {
   const { userId } = useAuth();
   const { setCurrentInputText, setExtractedItems, setCurrentDumpId, setDumpStatus } = useDumpStore();
 
-  const { data: dumps, isLoading } = useQuery({
-    queryKey: ["dumps", userId],
-    queryFn: () => getDumps(userId!),
-    enabled: !!userId,
-  });
+  const { data: dumps, isLoading } = useDumpsQuery(userId);
 
   const pendingDumps = (dumps || []).filter((dump) => dump.status === "needs_review");
 

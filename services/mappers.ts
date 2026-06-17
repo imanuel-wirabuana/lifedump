@@ -1,4 +1,4 @@
-import { PendingItem } from "@/store/use-dump-store";
+import { PendingItem } from "@/stores/use-dump-store";
 
 export function mapApiItemsToPendingItems(apiItems: any[]): PendingItem[] {
   return (apiItems || []).map((raw: any) => {

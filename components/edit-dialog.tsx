@@ -2,9 +2,7 @@
 
 import * as React from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateItem } from "@/lib/queries";
-import { Item } from "@/lib/types";
+import { Item } from "@/types";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useUpdateItemMutation } from "@/hooks/use-items";
 
 interface EditDialogProps {
   item: Item | null;
@@ -27,7 +26,7 @@ interface EditDialogProps {
 
 export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
   const { userId } = useAuth();
-  const queryClient = useQueryClient();
+  const updateMutation = useUpdateItemMutation(userId);
 
   // Common fields
   const [title, setTitle] = React.useState("");
@@ -78,19 +77,6 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
     }
   }, [item, isOpen]);
 
-  const updateMutation = useMutation({
-    mutationFn: (updates: any) => updateItem(userId!, item!.id, item!.category, updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items", userId] });
-      toast.success("Item updated successfully!");
-      onClose();
-    },
-    onError: (error) => {
-      console.error(error);
-      toast.error("Failed to update item.");
-    },
-  });
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!item || !userId) return;
@@ -118,7 +104,19 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
       };
     }
 
-    updateMutation.mutate(updates);
+    updateMutation.mutate(
+      { id: item.id, category: item.category, updates },
+      {
+        onSuccess: () => {
+          toast.success("Item updated successfully!");
+          onClose();
+        },
+        onError: (err) => {
+          console.error(err);
+          toast.error("Failed to update item.");
+        },
+      }
+    );
   };
 
   if (!item) return null;

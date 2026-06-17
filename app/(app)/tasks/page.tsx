@@ -1,8 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { getItemsByCategory, updateItemTask, deleteItem } from "@/lib/queries";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,34 +12,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckSquare, Trash2, Calendar, AlertCircle, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
-import { Item } from "@/lib/types";
+import { Item } from "@/types";
+import { useItemsByCategoryQuery, useToggleItemTaskMutation, useDeleteItemMutation } from "@/hooks/use-items";
 
 export default function TasksPage() {
   const { userId } = useAuth();
-  const queryClient = useQueryClient();
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
-  const { data: tasks, isLoading } = useQuery({
-    queryKey: ["items", userId, "task"],
-    queryFn: () => getItemsByCategory(userId!, "task"),
-    enabled: !!userId,
-  });
+  const { data: tasks, isLoading } = useItemsByCategoryQuery(userId, "task");
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, isCompleted }: { id: string; isCompleted: boolean }) =>
-      updateItemTask(userId!, id, isCompleted),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items", userId] });
-    },
-  });
+  const toggleMutation = useToggleItemTaskMutation(userId);
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteItem(userId!, id, "task"),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items", userId] });
-    },
-  });
+  const deleteMutation = useDeleteItemMutation(userId);
 
   if (isLoading) {
     return (
@@ -174,7 +157,7 @@ export default function TasksPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => deleteMutation.mutate(task.id)}
+                    onClick={() => deleteMutation.mutate({ id: task.id, category: "task" })}
                     className="text-muted-foreground hover:text-destructive size-7 shrink-0 rounded-md"
                   >
                     <Trash2 className="size-3.5" />

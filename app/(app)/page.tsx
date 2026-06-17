@@ -1,11 +1,9 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { getAllItems, deleteItem, updateItemTask, getDumps, getDumpsPaged, deleteDump } from "@/lib/queries";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useDumpStore } from "@/store/use-dump-store";
+import { useDumpStore } from "@/stores/use-dump-store";
 import { UniversalInput } from "@/components/universal-input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +15,9 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/
 import { CheckSquare, DollarSign, FileText, Trash2, Calendar, TrendingUp, NotebookTabs, Pencil, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
-import { Item, ItemCategory } from "@/lib/types";
+import { Item, ItemCategory } from "@/types";
+import { useItemsQuery, useUpdateItemMutation, useDeleteItemMutation } from "@/hooks/use-items";
+import { useDumpsInfiniteQuery, useDeleteDumpMutation } from "@/hooks/use-dumps";
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -34,17 +34,12 @@ function formatRelativeTime(date: Date): string {
 
 export default function Home() {
   const { userId } = useAuth();
-  const queryClient = useQueryClient();
   const router = useRouter();
   const { setCurrentInputText, setExtractedItems, setCurrentDumpId, setDumpStatus } = useDumpStore();
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
-  const { data: items, isLoading } = useQuery({
-    queryKey: ["items", userId],
-    queryFn: () => getAllItems(userId!),
-    enabled: !!userId,
-  });
+  const { data: items, isLoading } = useItemsQuery(userId);
 
   const {
     data: dumpsData,
@@ -52,36 +47,12 @@ export default function Home() {
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
-  } = useInfiniteQuery({
-    queryKey: ["dumps-infinite", userId],
-    queryFn: ({ pageParam }) => getDumpsPaged(userId!, 5, pageParam),
-    initialPageParam: null as any,
-    getNextPageParam: (lastPage) => lastPage.lastDoc,
-    enabled: !!userId,
-  });
+  } = useDumpsInfiniteQuery(userId);
 
-  const deleteDumpMutation = useMutation({
-    mutationFn: (dumpId: string) => deleteDump(userId!, dumpId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dumps-infinite", userId] });
-      queryClient.invalidateQueries({ queryKey: ["dumps", userId] });
-    },
-  });
+  const deleteDumpMutation = useDeleteDumpMutation(userId);
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, isCompleted }: { id: string; isCompleted: boolean }) =>
-      updateItemTask(userId!, id, isCompleted),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items", userId] });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: ({ id, category }: { id: string; category: ItemCategory }) => deleteItem(userId!, id, category),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items", userId] });
-    },
-  });
+  const toggleMutation = useUpdateItemMutation(userId);
+  const deleteMutation = useDeleteItemMutation(userId);
 
   // Infinite Scroll Intersection Observer
   const observerRef = useRef<HTMLDivElement | null>(null);

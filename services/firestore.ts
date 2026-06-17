@@ -1,6 +1,6 @@
 import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
-import { DumpSourceType, DumpStatus, ItemCategory } from "./types";
+import { DumpSourceType, DumpStatus, ItemCategory } from "@/types";
 
 // ── Firestore-safe item shape (no undefined allowed) ──────────────────────
 
