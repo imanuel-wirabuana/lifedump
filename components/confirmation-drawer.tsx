@@ -45,6 +45,7 @@ export function ConfirmationDrawer() {
       );
       // Invalidate all item queries so lists refresh immediately
       queryClient.invalidateQueries({ queryKey: ["items", userId] });
+      queryClient.invalidateQueries({ queryKey: ["dumps", userId] });
       toast.success("Items saved successfully!");
       clearState();
     } catch (error) {

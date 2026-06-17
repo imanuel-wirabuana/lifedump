@@ -1,6 +1,6 @@
 export type DumpSourceType = "text" | "image" | "voice";
 
-export type DumpStatus = "queued" | "processing" | "needs_review" | "confirmed" | "failed";
+export type DumpStatus = "processing" | "needs_review" | "confirmed" | "failed";
 
 export type Dump = {
   id: string;
@@ -10,8 +10,6 @@ export type Dump = {
   transcript?: string;
   mediaPath?: string;
   status: DumpStatus;
-  extractedItems?: any[] | null;
-  error?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
