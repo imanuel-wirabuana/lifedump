@@ -107,7 +107,8 @@ export default function Home() {
     },
   };
 
-  const recentDumps = dumpsData?.pages.flatMap((page) => page.dumps) || [];
+  const recentDumps = (dumpsData?.pages.flatMap((page) => page.dumps) || [])
+    .filter((dump) => dump.status === "confirmed");
 
   return (
     <div className="flex flex-col p-4 md:p-8 max-w-2xl mx-auto w-full pt-8 gap-8">
@@ -199,7 +200,7 @@ export default function Home() {
               </Card>
             ))}
           </div>
-        ) : recentDumps.length > 0 ? (
+        ) : (recentDumps.length > 0 || (dumpsData && hasNextPage)) ? (
           <div className="flex flex-col gap-3">
             {recentDumps.map((dump) => {
               const dumpItems = items?.filter((item) => item.dumpId === dump.id) || [];
@@ -208,26 +209,12 @@ export default function Home() {
                 <div
                   key={dump.id}
                   onClick={() => {
-                    if (dump.status === "needs_review") {
-                      setCurrentInputText(dump.rawText || "");
-                      setExtractedItems(dump.extractedItems || []);
-                      setCurrentDumpId(dump.id);
-                      setDumpStatus("needs_review");
-                    } else {
-                      router.push(`/dumps/${dump.id}`);
-                    }
+                    router.push(`/dumps/${dump.id}`);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      if (dump.status === "needs_review") {
-                        setCurrentInputText(dump.rawText || "");
-                        setExtractedItems(dump.extractedItems || []);
-                        setCurrentDumpId(dump.id);
-                        setDumpStatus("needs_review");
-                      } else {
-                        router.push(`/dumps/${dump.id}`);
-                      }
+                      router.push(`/dumps/${dump.id}`);
                     }
                   }}
                   tabIndex={0}
@@ -239,22 +226,7 @@ export default function Home() {
                         <p className="font-medium text-sm text-foreground/90 line-clamp-2 flex-1 italic pl-3 border-l-2 border-primary/20">
                           "{dump.rawText || "Empty dump"}"
                         </p>
-                         <div className="flex gap-1.5 shrink-0 items-center">
-                          {dump.status === "needs_review" && (
-                            <Badge variant="default" className="text-[10px] font-bold bg-indigo-500 hover:bg-indigo-600 text-white h-5 px-1.5 animate-pulse">
-                              Needs Review
-                            </Badge>
-                          )}
-                          {dump.status === "processing" && (
-                            <Badge variant="secondary" className="text-[10px] font-medium h-5 px-1.5">
-                              Processing...
-                            </Badge>
-                          )}
-                          {dump.status === "failed" && (
-                            <Badge variant="destructive" className="text-[10px] font-medium h-5 px-1.5">
-                              Failed
-                            </Badge>
-                          )}
+                        <div className="flex gap-1.5 shrink-0 items-center">
                           <Badge variant="outline" className="text-[10px] shrink-0 font-medium capitalize h-5 px-1.5">
                             {dump.sourceType}
                           </Badge>

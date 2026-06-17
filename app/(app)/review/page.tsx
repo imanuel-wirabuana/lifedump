@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { Check, ArrowLeft, Clock, Sparkles } from "lucide-react";
+import { Check, ArrowLeft, Clock, Sparkles, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useDumpsQuery } from "@/hooks/use-dumps";
+import { cn } from "@/lib/utils";
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -30,7 +31,12 @@ export default function ReviewPage() {
 
   const { data: dumps, isLoading } = useDumpsQuery(userId);
 
-  const pendingDumps = (dumps || []).filter((dump) => dump.status === "needs_review");
+  const pendingDumps = (dumps || []).filter(
+    (dump) =>
+      dump.status === "processing" ||
+      dump.status === "needs_review" ||
+      dump.status === "failed"
+  );
 
   return (
     <div className="flex flex-col p-4 md:p-8 max-w-2xl mx-auto w-full pt-8 gap-6">
@@ -70,17 +76,25 @@ export default function ReviewPage() {
         <div className="flex flex-col gap-4">
           {pendingDumps.map((dump) => {
             const itemCount = dump.extractedItems?.length || 0;
+            const isReviewable = dump.status === "needs_review";
 
             return (
               <Card
                 key={dump.id}
                 onClick={() => {
-                  setCurrentInputText(dump.rawText || "");
-                  setExtractedItems(dump.extractedItems || []);
-                  setCurrentDumpId(dump.id);
-                  setDumpStatus("needs_review");
+                  if (isReviewable) {
+                    setCurrentInputText(dump.rawText || "");
+                    setExtractedItems(dump.extractedItems || []);
+                    setCurrentDumpId(dump.id);
+                    setDumpStatus("needs_review");
+                  }
                 }}
-                className="border-border/50 shadow-sm hover:border-border transition-all duration-200 hover:-translate-y-[2px] cursor-pointer group hover:shadow-md"
+                className={cn(
+                  "border-border/50 shadow-sm transition-all duration-200",
+                  isReviewable
+                    ? "hover:border-border hover:-translate-y-[2px] cursor-pointer hover:shadow-md"
+                    : "cursor-default opacity-80"
+                )}
               >
                 <CardContent className="p-4 flex flex-col gap-3">
                   <div className="flex items-start justify-between gap-4">
@@ -88,6 +102,16 @@ export default function ReviewPage() {
                       "{dump.rawText || "Empty dump"}"
                     </p>
                     <div className="flex gap-1.5 shrink-0 items-center">
+                      {dump.status === "processing" && (
+                        <Badge variant="secondary" className="text-[10px] font-medium h-5 px-1.5 animate-pulse bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
+                          Processing...
+                        </Badge>
+                      )}
+                      {dump.status === "failed" && (
+                        <Badge variant="destructive" className="text-[10px] font-medium h-5 px-1.5">
+                          Failed
+                        </Badge>
+                      )}
                       <Badge variant="outline" className="text-[10px] shrink-0 font-medium capitalize h-5 px-1.5">
                         {dump.sourceType}
                       </Badge>
@@ -101,13 +125,28 @@ export default function ReviewPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
-                        <Sparkles className="size-3 mr-1 inline-block" />
-                        {itemCount} {itemCount === 1 ? "item" : "items"}
-                      </Badge>
-                      <Button size="sm" className="h-7 px-3 text-xs bg-primary hover:bg-primary/95 text-white font-medium rounded-lg">
-                        Review
-                      </Button>
+                      {dump.status === "needs_review" && (
+                        <>
+                          <Badge variant="secondary" className="text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
+                            <Sparkles className="size-3 mr-1 inline-block" />
+                            {itemCount} {itemCount === 1 ? "item" : "items"}
+                          </Badge>
+                          <Button size="sm" className="h-7 px-3 text-xs bg-primary hover:bg-primary/95 text-white font-medium rounded-lg">
+                            Review
+                          </Button>
+                        </>
+                      )}
+                      {dump.status === "processing" && (
+                        <Button size="sm" disabled className="h-7 px-3 text-xs gap-1">
+                          <Loader2 className="size-3 animate-spin" />
+                          Processing
+                        </Button>
+                      )}
+                      {dump.status === "failed" && (
+                        <Button size="sm" variant="destructive" disabled className="h-7 px-3 text-xs">
+                          Failed
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>

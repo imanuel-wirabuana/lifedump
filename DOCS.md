@@ -172,11 +172,11 @@ lifedump/
 │   │   ├── notes/
 │   │   │   └── page.tsx        # Searchable grid of general/journal notes with filters
 │   │   ├── review/
-│   │   │   └── page.tsx        # Lists pending dumps that require review; triggers global ConfirmationDrawer
+│   │   │   └── page.tsx        # Lists processing, pending (needs review), and failed dumps; triggers global ConfirmationDrawer for reviewable items
 │   │   ├── tasks/
 │   │   │   └── page.tsx        # Active and Completed task management lists
 │   │   ├── layout.tsx          # Auth wrapper; Header (with Bell notifications), Main layout container, and Bottom Nav
-│   │   └── page.tsx            # Main dashboard: statistics overview, input panel, recent feed
+│   │   └── page.tsx            # Main dashboard: statistics overview, input panel, recent confirmed dumps feed
 │   ├── api/
 │   │   ├── categorize/
 │   │   │   └── route.ts        # AI categorization API utilizing Vercel AI SDK and Kilo AI Gateway
