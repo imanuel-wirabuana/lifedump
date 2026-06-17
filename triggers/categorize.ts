@@ -86,36 +86,37 @@ async function executeAIStep(prompt: string): Promise<any[]> {
     if (errorText) {
       try {
         const jsonMatch = errorText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-        const cleanJsonText = jsonMatch ? jsonMatch[0] : errorText;
-        const parsed = JSON.parse(cleanJsonText);
-        
-        let salvagedItems = extractItemsFromRaw(parsed);
-        
-        if (salvagedItems.length === 0 && typeof parsed === "object") {
-          for (const val of Object.values(parsed)) {
-            if (Array.isArray(val)) {
-              salvagedItems = val;
-              break;
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          
+          let salvagedItems = extractItemsFromRaw(parsed);
+          
+          if (salvagedItems.length === 0 && typeof parsed === "object") {
+            for (const val of Object.values(parsed)) {
+              if (Array.isArray(val)) {
+                salvagedItems = val;
+                break;
+              }
             }
           }
-        }
 
-        if (salvagedItems.length > 0) {
-          const validatedItems = salvagedItems.map((item: any) => ({
-            category: item.category || "note",
-            title: item.title || "Untitled Item",
-            content: item.content || "",
-            dueAt: item.dueAt || null,
-            priority: item.priority || "none",
-            tags: Array.isArray(item.tags) ? item.tags : [],
-            financeType: item.financeType || null,
-            amount: typeof item.amount === "number" ? item.amount : null,
-            currency: item.currency || "IDR",
-            occurredAt: item.occurredAt || null,
-            confidence: typeof item.confidence === "number" ? item.confidence : 0.8,
-            needsClarification: typeof item.needsClarification === "boolean" ? item.needsClarification : false,
-          }));
-          resultObject = { items: validatedItems };
+          if (salvagedItems.length > 0) {
+            const validatedItems = salvagedItems.map((item: any) => ({
+              category: item.category || "note",
+              title: item.title || "Untitled Item",
+              content: item.content || "",
+              dueAt: item.dueAt || null,
+              priority: item.priority || "none",
+              tags: Array.isArray(item.tags) ? item.tags : [],
+              financeType: item.financeType || null,
+              amount: typeof item.amount === "number" ? item.amount : null,
+              currency: item.currency || "IDR",
+              occurredAt: item.occurredAt || null,
+              confidence: typeof item.confidence === "number" ? item.confidence : 0.8,
+              needsClarification: typeof item.needsClarification === "boolean" ? item.needsClarification : false,
+            }));
+            resultObject = { items: validatedItems };
+          }
         }
       } catch (salvageError) {
         console.error("Salvage parsing failed:", salvageError);

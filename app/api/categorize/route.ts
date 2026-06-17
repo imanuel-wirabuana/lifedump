@@ -168,27 +168,28 @@ Please format all timestamps with Jakarta offset (+07:00).`;
       if (rawText) {
         try {
           const jsonMatch = rawText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-          const cleanJsonText = jsonMatch ? jsonMatch[0] : rawText;
-          const parsed = JSON.parse(cleanJsonText);
-          const salvagedItems = extractItemsFromRaw(parsed);
-          
-          if (salvagedItems.length > 0) {
-            const validatedItems = salvagedItems.map(item => ({
-              category: item.category || "note",
-              title: item.title || "Untitled Item",
-              content: item.content || "",
-              dueAt: item.dueAt || null,
-              priority: item.priority || "none",
-              tags: Array.isArray(item.tags) ? item.tags : [],
-              financeType: item.financeType || null,
-              amount: typeof item.amount === "number" ? item.amount : null,
-              currency: item.currency || "IDR",
-              occurredAt: item.occurredAt || null,
-              confidence: typeof item.confidence === "number" ? item.confidence : 0.8,
-              needsClarification: typeof item.needsClarification === "boolean" ? item.needsClarification : false,
-            }));
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            const salvagedItems = extractItemsFromRaw(parsed);
             
-            resultObject = { items: validatedItems };
+            if (salvagedItems.length > 0) {
+              const validatedItems = salvagedItems.map(item => ({
+                category: item.category || "note",
+                title: item.title || "Untitled Item",
+                content: item.content || "",
+                dueAt: item.dueAt || null,
+                priority: item.priority || "none",
+                tags: Array.isArray(item.tags) ? item.tags : [],
+                financeType: item.financeType || null,
+                amount: typeof item.amount === "number" ? item.amount : null,
+                currency: item.currency || "IDR",
+                occurredAt: item.occurredAt || null,
+                confidence: typeof item.confidence === "number" ? item.confidence : 0.8,
+                needsClarification: typeof item.needsClarification === "boolean" ? item.needsClarification : false,
+              }));
+              
+              resultObject = { items: validatedItems };
+            }
           }
         } catch (salvageError) {
           console.error("Salvage parsing failed:", salvageError);
