@@ -104,6 +104,15 @@ Stores general notes or journals.
     *   `createdAt`: `Timestamp`
     *   `updatedAt`: `Timestamp`
 
+### Firestore Constraints & `undefined` Fields
+
+Firestore does not support writing `undefined` values (neither top-level nor nested inside objects or arrays). Writing `undefined` values causes Firestore to throw an `INVALID_ARGUMENT` exception.
+
+To ensure typesafety and prevent write failures:
+*   A recursive helper `stripUndefined` is implemented in [utils.ts](file:///c:/Users/901698/Desktop/.me/coding/lifedump/lib/utils.ts).
+*   `stripUndefined` recursively traverses plain objects and arrays to omit all key/value pairs where the value is `undefined`. It preserves instances of `Date` and Firestore `Timestamp` / `FieldValue`.
+*   All operations writing to Firestore (`setDoc`, `updateDoc`, and batch writes) must wrap updates using `stripUndefined`.
+
 ---
 
 ## 4. Workflows & Core Mechanisms

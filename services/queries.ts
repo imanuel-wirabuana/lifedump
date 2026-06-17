@@ -1,6 +1,7 @@
 import { collection, query, getDocs, doc, deleteDoc, updateDoc, Timestamp, getDoc, where, limit, startAfter, orderBy, DocumentSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import { Item, ItemCategory, Dump } from "@/types";
+import { stripUndefined } from "@/lib/utils";
 
 // Helper to safely convert Firestore Timestamp or any date-like value to a JS Date
 export function toDate(value: any): Date {
@@ -113,10 +114,10 @@ export async function getAllItems(userId: string): Promise<Item[]> {
 export async function updateItem(userId: string, itemId: string, category: ItemCategory, updates: any) {
   const collectionName = collectionNameMap[category];
   const itemRef = doc(db, "users", userId, collectionName, itemId);
-  await updateDoc(itemRef, {
+  await updateDoc(itemRef, stripUndefined({
     ...updates,
     updatedAt: new Date()
-  });
+  }));
 }
 
 export async function getDumps(userId: string): Promise<Dump[]> {

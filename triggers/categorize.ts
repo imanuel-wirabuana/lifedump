@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { db } from "@/services/firebase";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { stripUndefined } from "@/lib/utils";
 
 // Schema for categorization
 const categorizeSchema = z.object({
@@ -163,20 +164,15 @@ async function saveExtractedItems(dumpDocRef: any, items: any[]) {
       };
     }
 
-    const cleanObj: Record<string, any> = {};
     const merged = { ...base, ...extra };
-    for (const [k, v] of Object.entries(merged)) {
-      if (v !== undefined) cleanObj[k] = v;
-    }
-
-    return cleanObj;
+    return stripUndefined(merged);
   });
 
-  await updateDoc(dumpDocRef, {
+  await updateDoc(dumpDocRef, stripUndefined({
     status: "needs_review",
     extractedItems,
     updatedAt: serverTimestamp(),
-  });
+  }));
 }
 
 export const categorizeTask = task({

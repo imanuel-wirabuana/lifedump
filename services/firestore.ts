@@ -1,6 +1,7 @@
 import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
 import { DumpSourceType, DumpStatus, ItemCategory } from "@/types";
+import { stripUndefined } from "@/lib/utils";
 
 // ── Firestore-safe item shape (no undefined allowed) ──────────────────────
 
@@ -38,25 +39,6 @@ const collectionNameMap = {
   finance: "finances",
   note: "notes",
 } as const;
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-/**
- * Recursively strips all keys whose value is `undefined` from an object.
- * Firestore throws on any `undefined` value, even nested ones.
- */
-function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
-  const clean = {} as Record<string, unknown>;
-  for (const [key, value] of Object.entries(obj)) {
-    if (value === undefined) continue;
-    if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
-      clean[key] = stripUndefined(value as Record<string, unknown>);
-    } else {
-      clean[key] = value;
-    }
-  }
-  return clean as T;
-}
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
