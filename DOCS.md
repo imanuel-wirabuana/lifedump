@@ -135,7 +135,7 @@ sequenceDiagram
 2.  **Trigger Request**: The client issues a POST request to `/api/trigger-categorize` passing `{ text }`.
 3.  **Dump Document Initialization**: The server-side API handler creates a dump document in the `users/{userId}/dumps` collection with `status: "processing"` and the `rawText`. It triggers the Trigger.dev background task `categorize-dump` and returns the `dumpId` immediately with HTTP status 202.
 4.  **UI Feedback**: The client immediately clears the text input. The global `<DumpProcessingListener />` listens in real-time to the dump status. It fires a `toast.loading("Organizing your dump...")` using Sonner.
-5.  **Trigger.dev Worker Processing**: The background worker calls Vercel AI SDK querying the `kilo-auto/free` model via Kilo AI Gateway. It parses Jakarta timezone-localized relative times and dates, and extracts structured items.
+5.  **Trigger.dev Worker Processing**: The background worker calls Vercel AI SDK querying the `poolside/laguna-m.1:free` model via Kilo AI Gateway. It parses Jakarta timezone-localized relative times and dates, and extracts structured items.
 6.  **Firestore Write**: The background worker updates the dump document with `status: "needs_review"` and saving the `extractedItems` array, then finishes.
 7.  **Real-time Synchronization**: The client's global listener receives the status update (`needs_review`) and upgrades the Sonner loading toast to a success toast with a "Review" button.
 

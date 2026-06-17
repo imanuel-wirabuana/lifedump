@@ -65,7 +65,7 @@ async function executeAIStep(prompt: string): Promise<any[]> {
 
   try {
     const { object } = await generateObject({
-      model: kilo("kilo-auto/free"),
+      model: kilo("poolside/laguna-m.1:free"),
       maxRetries: 1,
       schema: categorizeSchema,
       system: "You are a data extraction AI. You MUST output a JSON object matching the provided schema. The JSON object must contain an 'items' array as the root key. Never return a single item directly at the root; always wrap it in the 'items' array. All dates and times must be generated in the Asia/Jakarta timezone and formatted with +07:00 offset.",
