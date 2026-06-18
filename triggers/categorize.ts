@@ -19,6 +19,8 @@ const categorizeSchema = z.object({
       amount: z.number().optional(),
       currency: z.literal("IDR").optional(),
       occurredAt: z.string().optional(),
+      paymentMethod: z.string().nullable().optional(),
+      isPinned: z.boolean().optional(),
       confidence: z.number(),
       needsClarification: z.boolean(),
     })
@@ -114,6 +116,8 @@ function normalizeItem(item: unknown): CategorizedItem {
     amount: asNumber(record.amount),
     currency: "IDR",
     occurredAt: asString(record.occurredAt) || undefined,
+    paymentMethod: asString(record.paymentMethod) || undefined,
+    isPinned: asBoolean(record.isPinned) ?? false,
     confidence: asNumber(record.confidence) ?? 0.8,
     needsClarification: asBoolean(record.needsClarification) ?? false,
   };
@@ -181,6 +185,8 @@ async function saveExtractedItems(dumpDocRef: ReturnType<typeof doc>, items: Cat
       category: item.category,
       title: item.title,
       content: item.content || "",
+      tags: item.tags || [],
+      source: "ai",
       aiConfidence: item.confidence || 0.8,
     };
 
@@ -190,8 +196,6 @@ async function saveExtractedItems(dumpDocRef: ReturnType<typeof doc>, items: Cat
         isCompleted: false,
         dueAt: item.dueAt ? item.dueAt : null,
         priority: item.priority || "none",
-        tags: item.tags || [],
-        source: "ai",
       };
     }
     if (item.category === "finance") {
@@ -200,13 +204,10 @@ async function saveExtractedItems(dumpDocRef: ReturnType<typeof doc>, items: Cat
         amount: Number(item.amount) || 0,
         currency: item.currency || "IDR",
         occurredAt: item.occurredAt ? item.occurredAt : new Date().toISOString(),
+        paymentMethod: item.paymentMethod,
       };
     }
-    if (item.category === "note") {
-      extra.note = {
-        noteType: "general",
-      };
-    }
+    if (item.category === "note") extra.isPinned = !!item.isPinned;
 
     const cleanObj: UnknownRecord = {};
     const merged = { ...base, ...extra };

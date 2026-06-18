@@ -18,6 +18,9 @@ export function mapDocToItem(id: string, data: DocumentData, category: ItemCateg
   const finance = data.finance as DocumentData | undefined;
   const note = data.note as DocumentData | undefined;
 
+  const tags = Array.isArray(data.tags) ? data.tags : Array.isArray(task?.tags) ? task.tags : Array.isArray(finance?.tags) ? finance.tags : [];
+  const source = data.source === "manual" || data.source === "ai" ? data.source : task?.source === "manual" || task?.source === "ai" ? task.source : finance?.source === "manual" || finance?.source === "ai" ? finance.source : "manual";
+
   return {
     id,
     userId: String(data.userId ?? ""),
@@ -25,22 +28,24 @@ export function mapDocToItem(id: string, data: DocumentData, category: ItemCateg
     category,
     title: String(data.title ?? "Untitled"),
     content: String(data.content ?? ""),
+    tags,
+    source,
     task: task ? {
       isCompleted: Boolean(task.isCompleted),
       dueAt: task.dueAt ? toDate(task.dueAt) : undefined,
       priority: task.priority ?? "none",
-      tags: Array.isArray(task.tags) ? task.tags : [],
-      source: task.source ?? "manual",
     } : undefined,
     finance: finance ? {
       type: finance.type === "income" ? "income" : "expense",
       amount: Number(finance.amount ?? 0),
       currency: "IDR",
       occurredAt: toDate(finance.occurredAt),
+      paymentMethod: typeof finance.paymentMethod === "string" ? finance.paymentMethod : undefined,
     } : undefined,
     note: note ? {
       noteType: note.noteType === "journal" ? "journal" : "general",
     } : undefined,
+    isPinned: Boolean(data.isPinned),
     aiConfidence: typeof data.aiConfidence === "number" ? data.aiConfidence : undefined,
     createdAt: toDate(data.createdAt),
     updatedAt: toDate(data.updatedAt),

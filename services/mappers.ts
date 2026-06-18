@@ -7,6 +7,8 @@ export function mapApiItemsToPendingItems(apiItems: ExtractedItem[] = []): Pendi
       category: raw.category,
       title: raw.title,
       content: raw.content || "",
+      tags: Array.isArray(raw.tags) ? raw.tags : [],
+      source: raw.source || "ai",
       aiConfidence: raw.confidence,
       needsClarification: raw.needsClarification,
     };
@@ -16,8 +18,6 @@ export function mapApiItemsToPendingItems(apiItems: ExtractedItem[] = []): Pendi
         isCompleted: false,
         dueAt: raw.dueAt ? new Date(raw.dueAt) : undefined,
         priority: raw.priority || "none",
-        tags: Array.isArray(raw.tags) ? raw.tags : [],
-        source: raw.source || "ai",
       };
     }
 
@@ -27,13 +27,12 @@ export function mapApiItemsToPendingItems(apiItems: ExtractedItem[] = []): Pendi
         amount: raw.amount || 0,
         currency: "IDR",
         occurredAt: raw.occurredAt ? new Date(raw.occurredAt) : new Date(),
+        paymentMethod: raw.paymentMethod || undefined,
       };
     }
 
     if (raw.category === "note") {
-      item.note = {
-        noteType: "general",
-      };
+      item.isPinned = !!raw.isPinned;
     }
 
     return item;

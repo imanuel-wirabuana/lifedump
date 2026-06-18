@@ -8,21 +8,21 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { FileText, Trash2, Search, Pencil } from "lucide-react";
+import { FileText, Trash2, Search, Pencil, Pin } from "lucide-react";
 import { EditDialog } from "@/components/edit-dialog";
 import { Item } from "@/types";
-import { useItemsByCategoryQuery, useDeleteItemMutation } from "@/hooks/use-items";
+import { useItemsByCategoryQuery, useDeleteItemMutation, useUpdateItemMutation } from "@/hooks/use-items";
 
 export default function NotesPage() {
   const { userId } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "general" | "journal">("all");
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
   const { data: notes, isLoading } = useItemsByCategoryQuery(userId, "note");
 
   const deleteMutation = useDeleteItemMutation(userId);
+  const updateMutation = useUpdateItemMutation(userId);
 
   if (isLoading) {
     return (
@@ -56,10 +56,7 @@ export default function NotesPage() {
       note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (note.content && note.content.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const noteType = note.note?.noteType || "general";
-    const matchesType = filterType === "all" || noteType === filterType;
-
-    return matchesSearch && matchesType;
+    return matchesSearch;
   });
 
   return (
@@ -84,28 +81,12 @@ export default function NotesPage() {
           />
         </InputGroup>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-          {(["all", "general", "journal"] as const).map((type) => (
-            <Button
-              key={type}
-              variant={filterType === type ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFilterType(type)}
-              className="text-xs h-9 px-3 capitalize shrink-0 rounded-lg"
-            >
-              {type}
-            </Button>
-          ))}
-        </div>
       </div>
 
       {/* Notes Grid */}
       {filteredNotes.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {filteredNotes.map((note) => {
-            const noteType = note.note?.noteType || "general";
-            return (
+          {filteredNotes.map((note) => (
               <Card
                 key={note.id}
                 className="border-border/50 shadow-sm hover:border-border hover:shadow transition-all flex flex-col justify-between"
@@ -114,14 +95,20 @@ export default function NotesPage() {
                   <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between gap-2">
                     <div className="min-w-0">
                       <CardTitle className="text-sm font-semibold truncate pr-1">{note.title}</CardTitle>
-                      <Badge
-                        variant={noteType === "journal" ? "secondary" : "outline"}
-                        className="text-[9px] uppercase px-1 py-0 h-4 font-bold tracking-wider mt-1.5"
-                      >
-                        {noteType}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {note.isPinned && <Badge variant="secondary" className="text-[9px] uppercase px-1 py-0 h-4 font-bold tracking-wider">Pinned</Badge>}
+                        {(note.tags || []).slice(0, 2).map((tag) => <Badge key={tag} variant="outline" className="text-[9px] px-1 py-0 h-4">{tag}</Badge>)}
+                      </div>
                     </div>
                     <div className="flex items-center gap-0.5 -mt-1 -mr-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => updateMutation.mutate({ id: note.id, category: "note", updates: { isPinned: !note.isPinned } })}
+                        className="text-muted-foreground hover:text-foreground size-7 rounded-md"
+                      >
+                        <Pin className="size-3.5" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -163,8 +150,7 @@ export default function NotesPage() {
                   </p>
                 </div>
               </Card>
-            );
-          })}
+          ))}
         </div>
       ) : (
         <Empty className="py-16 border-border/40">
@@ -174,9 +160,9 @@ export default function NotesPage() {
             </EmptyMedia>
             <EmptyTitle>No notes found</EmptyTitle>
             <EmptyDescription>
-              {searchQuery || filterType !== "all"
-                ? "Try adjusting your search query or filters."
-                : "Type and dump notes or journals on the home screen to see them here."}
+              {searchQuery
+                ? "Try adjusting your search query."
+                : "Type and dump notes on the home screen to see them here."}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

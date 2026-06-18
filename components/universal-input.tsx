@@ -13,11 +13,16 @@ export function UniversalInput() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
+
+    queueMicrotask(() => {
+      setSpeechSupported(true);
+    });
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
@@ -25,8 +30,6 @@ export function UniversalInput() {
     recognition.lang = "id-ID"; // Indonesian — change to "en-US" for English
     recognitionRef.current = recognition;
   }, []);
-
-  const speechSupported = typeof window !== "undefined" && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const toggleListening = useCallback(() => {
     const recognition = recognitionRef.current;

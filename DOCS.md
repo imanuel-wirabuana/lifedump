@@ -55,54 +55,46 @@ Stores the raw input text submitted by the user.
     *   `createdAt`: `Timestamp`
     *   `updatedAt`: `Timestamp`
 
-### 2. Tasks Collection (`users/{userId}/tasks`)
-Stores items categorized as tasks.
-*   **Fields**:
+### 2. Standardized Item Collections (`tasks`, `finances`, `notes`)
+All confirmed items share one top-level shell. Collection path stays category-specific:
+`users/{userId}/{tasks|finances|notes}/{documentId}`.
+
+*   **Shared Fields**:
     *   `userId`: `string`
-    *   `dumpId`: `string` (references the dump document that generated this task)
-    *   `category`: `"task"`
+    *   `dumpId`: `string` (optional for future manual items)
+    *   `category`: `"task" | "finance" | "note"`
     *   `title`: `string`
-    *   `content`: `string` (optional task description)
-    *   `task`:
-        *   `isCompleted`: `boolean`
-        *   `dueAt`: `Timestamp` (optional)
-        *   `priority`: `"none" | "low" | "medium" | "high"` (optional)
-        *   `tags`: `string[]` (optional)
-        *   `source`: `"manual" | "ai"` (optional)
-    *   `aiConfidence`: `number`
+    *   `content`: `string`
+    *   `tags`: `string[]`
+    *   `source`: `"manual" | "ai"`
+    *   `aiConfidence`: `number` (optional)
     *   `createdAt`: `Timestamp`
     *   `updatedAt`: `Timestamp`
 
-### 3. Finances Collection (`users/{userId}/finances`)
-Stores transaction and cashflow records.
-*   **Fields**:
-    *   `userId`: `string`
-    *   `dumpId`: `string`
-    *   `category`: `"finance"`
-    *   `title`: `string`
-    *   `content`: `string` (mandatory transaction details/reason)
-    *   `finance`:
-        *   `type`: `"expense" | "income"`
-        *   `amount`: `number`
-        *   `currency`: `"IDR"`
-        *   `occurredAt`: `Timestamp`
-    *   `aiConfidence`: `number`
-    *   `createdAt`: `Timestamp`
-    *   `updatedAt`: `Timestamp`
+### 3. Tasks Collection (`users/{userId}/tasks`)
+Adds task-specific nested data only:
+*   `task.isCompleted`: `boolean`
+*   `task.dueAt`: `Timestamp` (optional)
+*   `task.priority`: `"none" | "low" | "medium" | "high"` (optional)
 
-### 4. Notes Collection (`users/{userId}/notes`)
-Stores general notes or journals.
-*   **Fields**:
-    *   `userId`: `string`
-    *   `dumpId`: `string`
-    *   `category`: `"note"`
-    *   `title`: `string`
-    *   `content`: `string` (mandatory note details/body)
-    *   `note`:
-        *   `noteType`: `"general" | "journal"`
-    *   `aiConfidence`: `number`
-    *   `createdAt`: `Timestamp`
-    *   `updatedAt`: `Timestamp`
+### 4. Finances Collection (`users/{userId}/finances`)
+Adds finance-specific nested data only:
+*   `finance.type`: `"expense" | "income"`
+*   `finance.amount`: `number`
+*   `finance.currency`: `"IDR"`
+*   `finance.occurredAt`: `Timestamp`
+*   `finance.paymentMethod`: `string` (optional)
+
+### 5. Notes Collection (`users/{userId}/notes`)
+Matches the simple note DTO using the shared shell:
+*   `title`: top-level note title
+*   `content`: top-level note body
+*   `tags`: top-level labels
+*   `source`: `"manual" | "ai"`
+*   `aiConfidence`: optional AI confidence
+*   `isPinned`: `boolean` (optional; defaults false in UI)
+
+> Legacy compatibility: mappers still read old nested `task.tags`, `task.source`, `finance.tags`, `finance.source`, and `note.noteType` where present, but new writes use the standardized top-level fields.
 
 ---
 
@@ -298,9 +290,12 @@ lifedump/
 *   Includes a real-time reactive notification dot (pulsing rose-colored badge) that appears over the bell icon if there are any dumps in the query list with a `"needs_review"` status.
 
 ### `components/theme-provider.tsx` (Theme Engine)
-*   Integrates `next-themes` with `attribute="class"`.
+*   Provides a small class-based client theme context that stores the selected theme in `localStorage` under `lifedump-theme` and toggles the `dark` class on `<html>`.
+*   Avoids provider-injected `<script>` tags during client component rendering, preventing React 19 / Next 16 script rendering warnings.
 *   **Theme Hotkey**: Listens to global `keydown` events. If the user presses the letter `d` (case-insensitive) while not typing inside an input/textarea/select element, the theme resolved value toggles between `dark` and `light`.
-*   **Lint-Safe Hydration**: `<ThemeToggle />` avoids mount-only state effects and relies on CSS/theme classes plus `next-themes` resolution for icon state.
+
+### `components/universal-input.tsx` (Dump Composer)
+*   Detects Web Speech API support after hydration and only then renders the microphone button, keeping the server-rendered and first client-rendered trees identical.
 
 ### API Route Type-Safety & Trigger Integration
 *   API routes parse `req.json()` into narrow body shapes instead of `any`, validate required fields before side effects, and return safe fallback error messages for unknown thrown values.

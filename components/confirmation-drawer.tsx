@@ -85,7 +85,7 @@ export function ConfirmationDrawer() {
         content: item.content || "",
         dueAt: item.task?.dueAt ? new Date(item.task.dueAt).toISOString() : null,
         priority: item.task?.priority || "none",
-        tags: item.task?.tags || [],
+        tags: item.tags || [],
         financeType: item.finance?.type || null,
         amount: item.finance?.amount || null,
         currency: "IDR",
@@ -190,9 +190,9 @@ export function ConfirmationDrawer() {
                           </span>
                         </div>
                       )}
-                      {item.task?.tags && item.task.tags.length > 0 && (
+                      {item.tags && item.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-0.5">
-                          {item.task.tags.map((tag: string, tagIdx: number) => (
+                          {item.tags.map((tag: string, tagIdx: number) => (
                             <Badge key={tagIdx} variant="outline" className="text-[9px] py-0 px-1 border-muted bg-muted/40 font-mono">
                               #{tag}
                             </Badge>

@@ -22,6 +22,8 @@ const categorizeSchema = z.object({
       amount: z.number().optional(),
       currency: z.literal("IDR").optional(),
       occurredAt: z.string().optional(),
+      paymentMethod: z.string().nullable().optional(),
+      isPinned: z.boolean().optional(),
       confidence: z.number(),
       needsClarification: z.boolean(),
     })
@@ -109,6 +111,8 @@ function normalizeItem(item: unknown): CategorizedItem {
     amount: asNumber(record.amount),
     currency: "IDR",
     occurredAt: asString(record.occurredAt) || undefined,
+    paymentMethod: asString(record.paymentMethod) || undefined,
+    isPinned: asBoolean(record.isPinned) ?? false,
     confidence: asNumber(record.confidence) ?? 0.8,
     needsClarification: asBoolean(record.needsClarification) ?? false,
   }

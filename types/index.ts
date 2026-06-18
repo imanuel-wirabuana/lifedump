@@ -15,6 +15,8 @@ export type ExtractedItem = {
   financeType?: "expense" | "income" | null;
   amount?: number | null;
   occurredAt?: string | null;
+  paymentMethod?: string | null;
+  isPinned?: boolean;
 };
 
 export type Dump = {
@@ -33,32 +35,36 @@ export type Dump = {
 
 export type ItemCategory = "task" | "finance" | "note";
 
+export type ItemSource = "manual" | "ai";
+
 export type Item = {
   id: string;
   userId: string;
-  dumpId: string;
+  dumpId?: string;
   category: ItemCategory;
   title: string;
   content: string;
+  tags?: string[];
+  source: ItemSource;
   task?: {
     dueAt?: Date;
     isCompleted: boolean;
     priority?: "none" | "low" | "medium" | "high";
-    tags?: string[];
-    source?: "manual" | "ai";
   };
   finance?: {
     type: "expense" | "income";
     amount: number;
     currency: "IDR";
     occurredAt: Date;
+    paymentMethod?: string;
   };
   note?: {
     noteType: "journal" | "general";
   };
+  isPinned?: boolean;
   aiConfidence?: number;
   createdAt: Date;
   updatedAt: Date;
 };
 
-export type ItemPatch = Partial<Pick<Item, "title" | "content" | "task" | "finance" | "note" | "aiConfidence">>;
+export type ItemPatch = Partial<Pick<Item, "title" | "content" | "tags" | "source" | "task" | "finance" | "note" | "isPinned" | "aiConfidence">>;

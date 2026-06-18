@@ -36,7 +36,7 @@ export default function TasksPage() {
   const allTags = Array.from(
     new Set(
       tasks
-        ?.flatMap((t) => t.task?.tags || [])
+        ?.flatMap((t) => t.tags || [])
         .map((t) => t.trim().toLowerCase()) || []
     )
   );
@@ -47,7 +47,7 @@ export default function TasksPage() {
     // Filter by tag
     if (filterTag !== "all") {
       result = result.filter((t) =>
-        t.task?.tags?.some((tag) => tag.toLowerCase() === filterTag.toLowerCase())
+        t.tags?.some((tag) => tag.toLowerCase() === filterTag.toLowerCase())
       );
     }
 
@@ -209,15 +209,15 @@ export default function TasksPage() {
                           Overdue
                         </Badge>
                       )}
-                      {task.task?.source === "ai" && (
+                      {task.source === "ai" && (
                         <span className="text-[10px] text-indigo-500 inline-flex items-center gap-0.5 shrink-0 font-medium" title="AI Generated">
                           <Sparkles className="size-2.5" />
                           AI
                         </span>
                       )}
-                      {task.task?.tags && task.task.tags.length > 0 && (
+                      {task.tags && task.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 w-full mt-1.5">
-                          {task.task.tags.map((tag) => (
+                          {task.tags.map((tag) => (
                             <Badge
                               key={tag}
                               variant="outline"

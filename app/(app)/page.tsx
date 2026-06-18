@@ -50,7 +50,7 @@ export default function Home() {
   const hasNextPage = confirmedDumps.length > visibleCount;
   const itemsByDumpId = useMemo(() => {
     return items.reduce<Record<string, Item[]>>((groups, item) => {
-      groups[item.dumpId] = [...(groups[item.dumpId] ?? []), item];
+      if (item.dumpId) groups[item.dumpId] = [...(groups[item.dumpId] ?? []), item];
       return groups;
     }, {});
   }, [items]);

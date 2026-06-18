@@ -1,24 +1,71 @@
 "use client"
 
 import * as React from "react"
-import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes"
 
-function ThemeProvider({
-  children,
-  ...props
-}: React.ComponentProps<typeof NextThemesProvider>) {
+type Theme = "light" | "dark"
+
+type ThemeContextValue = {
+  resolvedTheme: Theme
+  setTheme: (theme: Theme) => void
+}
+
+const ThemeContext = React.createContext<ThemeContextValue | null>(null)
+
+function getSystemTheme(): Theme {
+  if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark"
+  }
+
+  return "light"
+}
+
+function getStoredTheme(): Theme {
+  const storedTheme = window.localStorage.getItem("lifedump-theme")
+
+  if (storedTheme === "light" || storedTheme === "dark") {
+    return storedTheme
+  }
+
+  return getSystemTheme()
+}
+
+function applyTheme(theme: Theme) {
+  document.documentElement.classList.toggle("dark", theme === "dark")
+}
+
+function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [resolvedTheme, setResolvedTheme] = React.useState<Theme>("light")
+
+  const setTheme = React.useCallback((theme: Theme) => {
+    window.localStorage.setItem("lifedump-theme", theme)
+    applyTheme(theme)
+    setResolvedTheme(theme)
+  }, [])
+
+  React.useEffect(() => {
+    queueMicrotask(() => {
+      const theme = getStoredTheme()
+      applyTheme(theme)
+      setResolvedTheme(theme)
+    })
+  }, [])
+
   return (
-    <NextThemesProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-      {...props}
-    >
+    <ThemeContext.Provider value={{ resolvedTheme, setTheme }}>
       <ThemeHotkey />
       {children}
-    </NextThemesProvider>
+    </ThemeContext.Provider>
   )
+}
+
+function useTheme() {
+  const context = React.useContext(ThemeContext)
+
+  if (!context) {
+    throw new Error("useTheme must be used within ThemeProvider")
+  }
+
+  return context
 }
 
 function isTypingTarget(target: EventTarget | null) {
@@ -68,4 +115,4 @@ function ThemeHotkey() {
   return null
 }
 
-export { ThemeProvider }
+export { ThemeProvider, useTheme }

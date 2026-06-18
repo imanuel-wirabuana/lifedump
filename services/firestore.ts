@@ -9,8 +9,6 @@ interface FirestoreTaskData {
   isCompleted: boolean;
   dueAt?: Date | null;
   priority?: "none" | "low" | "medium" | "high";
-  tags?: string[];
-  source?: "manual" | "ai";
 }
 
 interface FirestoreFinanceData {
@@ -18,6 +16,7 @@ interface FirestoreFinanceData {
   amount: number;
   currency: "IDR";
   occurredAt: Date;
+  paymentMethod?: string;
 }
 
 interface FirestoreNoteData {
@@ -31,6 +30,9 @@ interface FirestoreItemInput {
   task?: FirestoreTaskData;
   finance?: FirestoreFinanceData;
   note?: FirestoreNoteData;
+  tags?: string[];
+  source?: "manual" | "ai";
+  isPinned?: boolean;
   aiConfidence?: number;
 }
 
@@ -95,6 +97,8 @@ export async function saveDumpAndItems(
         category: item.category,
         title: item.title,
         content: item.content,
+        tags: item.tags || [],
+        source: item.source || "manual",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -141,6 +145,8 @@ export async function confirmDumpAndItems(
         category: item.category,
         title: item.title,
         content: item.content || "",
+        tags: item.tags || [],
+        source: item.source || "ai",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -151,8 +157,6 @@ export async function confirmDumpAndItems(
           isCompleted: !!item.task.isCompleted,
           dueAt: item.task.dueAt ? new Date(item.task.dueAt) : null,
           priority: item.task.priority || "none",
-          tags: item.task.tags || [],
-          source: item.task.source || "ai",
         };
       }
       if (item.category === "finance" && item.finance) {
@@ -161,13 +165,10 @@ export async function confirmDumpAndItems(
           amount: Number(item.finance.amount) || 0,
           currency: item.finance.currency || "IDR",
           occurredAt: item.finance.occurredAt ? new Date(item.finance.occurredAt) : new Date(),
+          paymentMethod: item.finance.paymentMethod,
         };
       }
-      if (item.category === "note" && item.note) {
-        extra.note = {
-          noteType: item.note.noteType || "general",
-        };
-      }
+      if (item.category === "note") extra.isPinned = !!item.isPinned;
       if (item.aiConfidence !== undefined) {
         extra.aiConfidence = item.aiConfidence;
       }
