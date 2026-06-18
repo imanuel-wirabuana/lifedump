@@ -29,51 +29,89 @@ const categorizeSchema = z.object({
   assumptions: z.array(z.string()).optional(),
 })
 
-function extractItemsFromRaw(json: any): any[] {
-  if (!json) return [];
+type Category = "task" | "finance" | "note"
+type CategorizedItem = z.infer<typeof categorizeSchema>["items"][number]
+type UnknownRecord = Record<string, unknown>
+type AiError = Error & {
+  text?: string
+  response?: { body?: { text?: string }; text?: string }
+}
 
-  // Case 1: correct wrapping: { items: [...] }
-  if (json.items && Array.isArray(json.items)) {
-    return json.items;
-  }
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null
+}
 
-  // Case 2: Direct array: [...]
-  if (Array.isArray(json)) {
-    return json;
-  }
+function isCategory(value: unknown): value is Category {
+  return value === "task" || value === "finance" || value === "note"
+}
 
-  // Case 3: Object with numeric keys: { "0": {...}, "1": {...} }
-  const keys = Object.keys(json);
-  const isNumericIndexed = keys.length > 0 && keys.every(k => !isNaN(Number(k)));
+function asString(value: unknown, fallback = "") {
+  return typeof value === "string" ? value : fallback
+}
+
+function asNumber(value: unknown) {
+  return typeof value === "number" ? value : undefined
+}
+
+function asBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : undefined
+}
+
+function asStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function withCategory(value: unknown, category: Category): UnknownRecord {
+  return isRecord(value) ? { ...value, category } : { category, title: "Untitled Item", content: "" }
+}
+
+function extractItemsFromRaw(json: unknown): unknown[] {
+  if (!isRecord(json)) return Array.isArray(json) ? json : []
+  if (Array.isArray(json.items)) return json.items
+
+  const keys = Object.keys(json)
+  const isNumericIndexed = keys.length > 0 && keys.every(k => !isNaN(Number(k)))
   if (isNumericIndexed) {
     return keys
       .sort((a, b) => Number(a) - Number(b))
       .map(k => json[k])
-      .filter(item => item && typeof item === "object");
+      .filter(isRecord)
   }
 
-  // Case 4: Category keys: { task: [...], finance: [...] }
-  if (json.task || json.finance || json.note) {
-    const list: any[] = [];
-    if (Array.isArray(json.task)) list.push(...json.task.map((x: any) => ({ ...x, category: "task" })));
-    if (Array.isArray(json.finance)) list.push(...json.finance.map((x: any) => ({ ...x, category: "finance" })));
-    if (Array.isArray(json.note)) list.push(...json.note.map((x: any) => ({ ...x, category: "note" })));
-    if (list.length > 0) return list;
-  }
+  const list: UnknownRecord[] = []
+  if (Array.isArray(json.task)) list.push(...json.task.map(item => withCategory(item, "task")))
+  if (Array.isArray(json.finance)) list.push(...json.finance.map(item => withCategory(item, "finance")))
+  if (Array.isArray(json.note)) list.push(...json.note.map(item => withCategory(item, "note")))
+  if (list.length > 0) return list
 
-  // Case 5: Single item directly at root: { category: "...", title: "..." }
-  if (typeof json === "object" && typeof json.category === "string" && typeof json.title === "string") {
-    return [json];
-  }
+  if (isCategory(json.category) && typeof json.title === "string") return [json]
 
-  // Fallback: search recursively for any array (deepest or first array found)
   for (const value of Object.values(json)) {
-    if (Array.isArray(value)) {
-      return value;
-    }
+    if (Array.isArray(value)) return value
   }
 
-  return [];
+  return []
+}
+
+function normalizeItem(item: unknown): CategorizedItem {
+  const record = isRecord(item) ? item : {}
+  const priority = asString(record.priority, "none")
+  const financeType = asString(record.financeType, "expense")
+
+  return {
+    category: isCategory(record.category) ? record.category : "note",
+    title: asString(record.title, "Untitled Item"),
+    content: asString(record.content),
+    dueAt: asString(record.dueAt) || null,
+    priority: priority === "low" || priority === "medium" || priority === "high" ? priority : "none",
+    tags: asStringArray(record.tags),
+    financeType: financeType === "income" ? "income" : "expense",
+    amount: asNumber(record.amount),
+    currency: "IDR",
+    occurredAt: asString(record.occurredAt) || undefined,
+    confidence: asNumber(record.confidence) ?? 0.8,
+    needsClarification: asBoolean(record.needsClarification) ?? false,
+  }
 }
 
 export async function POST(req: Request) {
@@ -142,7 +180,7 @@ Current date/time context: ${currentJakartaTime} (in Jakarta local time).
 Please format all timestamps with Jakarta offset (+07:00).`;
     }
 
-    let resultObject: any = null;
+    let resultObject: { items: CategorizedItem[] } | null = null;
 
     try {
       const { object } = await generateObject({
@@ -153,16 +191,17 @@ Please format all timestamps with Jakarta offset (+07:00).`;
         prompt,
       });
       resultObject = object;
-    } catch (error: any) {
-      console.warn("generateObject failed or failed schema validation. Attempting salvage...", error);
+    } catch (error) {
+      const aiError = error as AiError;
+      console.warn("generateObject failed or failed schema validation. Attempting salvage...", aiError);
       
       let rawText = "";
-      if (error.text) {
-        rawText = error.text;
-      } else if (error.response?.body?.text) {
-        rawText = error.response.body.text;
-      } else if (error.response?.text) {
-        rawText = error.response.text;
+      if (aiError.text) {
+        rawText = aiError.text;
+      } else if (aiError.response?.body?.text) {
+        rawText = aiError.response.body.text;
+      } else if (aiError.response?.text) {
+        rawText = aiError.response.text;
       }
 
       if (rawText) {
@@ -173,22 +212,7 @@ Please format all timestamps with Jakarta offset (+07:00).`;
           const salvagedItems = extractItemsFromRaw(parsed);
           
           if (salvagedItems.length > 0) {
-            const validatedItems = salvagedItems.map(item => ({
-              category: item.category || "note",
-              title: item.title || "Untitled Item",
-              content: item.content || "",
-              dueAt: item.dueAt || null,
-              priority: item.priority || "none",
-              tags: Array.isArray(item.tags) ? item.tags : [],
-              financeType: item.financeType || null,
-              amount: typeof item.amount === "number" ? item.amount : null,
-              currency: item.currency || "IDR",
-              occurredAt: item.occurredAt || null,
-              confidence: typeof item.confidence === "number" ? item.confidence : 0.8,
-              needsClarification: typeof item.needsClarification === "boolean" ? item.needsClarification : false,
-            }));
-            
-            resultObject = { items: validatedItems };
+            resultObject = { items: salvagedItems.map(normalizeItem) };
           }
         } catch (salvageError) {
           console.error("Salvage parsing failed:", salvageError);
@@ -196,13 +220,14 @@ Please format all timestamps with Jakarta offset (+07:00).`;
       }
 
       if (!resultObject) {
-        throw error;
+        throw aiError;
       }
     }
 
     return NextResponse.json(resultObject)
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Categorization failed";
     console.error("Categorize Error:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -1,6 +1,7 @@
 import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
 import { DumpSourceType, DumpStatus, ItemCategory } from "@/types";
+import { PendingItem } from "@/stores/use-dump-store";
 
 // ── Firestore-safe item shape (no undefined allowed) ──────────────────────
 
@@ -116,7 +117,7 @@ export async function saveDumpAndItems(
 export async function confirmDumpAndItems(
   userId: string,
   dumpId: string,
-  items: any[]
+  items: PendingItem[]
 ) {
   const batch = writeBatch(db);
 
@@ -131,7 +132,7 @@ export async function confirmDumpAndItems(
   // 2. Create Item documents in their own category-specific subcollections
   if (items.length > 0) {
     for (const item of items) {
-      const collectionName = collectionNameMap[item.category as ItemCategory];
+      const collectionName = collectionNameMap[item.category];
       const itemDocRef = doc(collection(db, "users", userId, collectionName));
 
       const base = {

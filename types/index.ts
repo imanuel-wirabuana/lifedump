@@ -2,6 +2,21 @@ export type DumpSourceType = "text" | "image" | "voice";
 
 export type DumpStatus = "processing" | "needs_review" | "confirmed" | "failed";
 
+export type ExtractedItem = {
+  category: ItemCategory;
+  title: string;
+  content?: string;
+  confidence?: number;
+  needsClarification?: boolean;
+  dueAt?: string | null;
+  priority?: "none" | "low" | "medium" | "high";
+  tags?: string[];
+  source?: "manual" | "ai";
+  financeType?: "expense" | "income" | null;
+  amount?: number | null;
+  occurredAt?: string | null;
+};
+
 export type Dump = {
   id: string;
   userId: string;
@@ -10,7 +25,7 @@ export type Dump = {
   transcript?: string;
   mediaPath?: string;
   status: DumpStatus;
-  extractedItems?: any[] | null;
+  extractedItems?: ExtractedItem[] | null;
   error?: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -45,3 +60,5 @@ export type Item = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type ItemPatch = Partial<Pick<Item, "title" | "content" | "task" | "finance" | "note" | "aiConfidence">>;

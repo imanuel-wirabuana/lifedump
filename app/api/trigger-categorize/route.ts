@@ -12,7 +12,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { text } = await req.json();
+    const body = (await req.json()) as { text?: string };
+    const text = body.text;
 
     if (!text || !text.trim()) {
       return NextResponse.json({ error: "Text is required" }, { status: 400 });
@@ -39,8 +40,9 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ dumpId, status: "processing" }, { status: 202 });
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Trigger categorize failed";
     console.error("Trigger Categorize Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

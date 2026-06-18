@@ -3,32 +3,30 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useDumpStore, PendingItem } from "@/stores/use-dump-store";
+import { useDumpStore } from "@/stores/use-dump-store";
 import { Mic, MicOff, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { mapApiItemsToPendingItems } from "@/services/mappers";
 import { toast } from "sonner";
 
 export function UniversalInput() {
-  const { currentInputText, setCurrentInputText, setExtractedItems, setDumpStatus } = useDumpStore();
+  const { currentInputText, setCurrentInputText } = useDumpStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [speechSupported, setSpeechSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      setSpeechSupported(true);
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "id-ID"; // Indonesian — change to "en-US" for English
+    if (!SpeechRecognition) return;
 
-      recognitionRef.current = recognition;
-    }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "id-ID"; // Indonesian — change to "en-US" for English
+    recognitionRef.current = recognition;
   }, []);
+
+  const speechSupported = typeof window !== "undefined" && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const toggleListening = useCallback(() => {
     const recognition = recognitionRef.current;
@@ -92,9 +90,9 @@ export function UniversalInput() {
         setCurrentInputText(data.enhancedText);
         toast.success("Prompt enhanced!");
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      toast.error(error.message || "Failed to enhance prompt");
+      toast.error(error instanceof Error ? error.message : "Failed to enhance prompt");
     } finally {
       setIsEnhancing(false);
     }
@@ -135,7 +133,7 @@ export function UniversalInput() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2 rounded-xl border bg-card text-card-foreground shadow-sm p-4">
-        <h2 className="text-sm font-medium text-muted-foreground">What's on your mind?</h2>
+        <h2 className="text-sm font-medium text-muted-foreground">What&apos;s on your mind?</h2>
         <Textarea
           placeholder={isListening ? "Listening..." : "Type or speak anything here..."}
           className="min-h-[120px] resize-none border-0 p-0 focus-visible:ring-0 text-base"

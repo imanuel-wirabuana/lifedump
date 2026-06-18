@@ -12,7 +12,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { dumpId, feedback, currentItems } = await req.json();
+    const body = (await req.json()) as { dumpId?: string; feedback?: string; currentItems?: unknown[] };
+    const { dumpId, feedback, currentItems } = body;
 
     if (!dumpId) {
       return NextResponse.json({ error: "Dump ID is required" }, { status: 400 });
@@ -46,8 +47,9 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ dumpId, status: "processing" }, { status: 202 });
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Trigger refine failed";
     console.error("Trigger Refine Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,12 +11,12 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/
 import { CheckSquare, DollarSign, FileText, Trash2, Calendar, Pencil, ArrowLeft, Clock, FileDown, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
-import { Item, ItemCategory } from "@/types";
-import { toast } from "sonner";
+import { Item } from "@/types";
 import Link from "next/link";
 import { useDumpStore } from "@/stores/use-dump-store";
 import { useItemsQuery, useToggleItemTaskMutation, useDeleteItemMutation } from "@/hooks/use-items";
 import { useDumpByIdQuery } from "@/hooks/use-dumps";
+import { mapApiItemsToPendingItems } from "@/services/mappers";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -34,13 +34,12 @@ export default function DumpDetailPage({ params }: PageProps) {
   const { data: items, isLoading: isLoadingItems } = useItemsQuery(userId);
 
   const isNeedsReview = dump?.status === "needs_review";
-  const isConfirmed = dump?.status === "confirmed";
   const isFailed = dump?.status === "failed";
 
   useEffect(() => {
     if (dump && dump.status === "needs_review") {
       setCurrentInputText(dump.rawText || "");
-      setExtractedItems(dump.extractedItems || []);
+      setExtractedItems(mapApiItemsToPendingItems(dump.extractedItems || []));
       setCurrentDumpId(dumpId);
       setDumpStatus("needs_review");
     }
@@ -125,7 +124,7 @@ export default function DumpDetailPage({ params }: PageProps) {
                 size="sm"
                 onClick={() => {
                   setCurrentInputText(dump.rawText || "");
-                  setExtractedItems(dump.extractedItems || []);
+                  setExtractedItems(mapApiItemsToPendingItems(dump.extractedItems || []));
                   setCurrentDumpId(dumpId);
                   setDumpStatus("needs_review");
                 }}
@@ -169,7 +168,7 @@ export default function DumpDetailPage({ params }: PageProps) {
             <CardContent className="p-4 pt-2 flex flex-col gap-2">
               <div className="relative pl-4 border-l-2 border-primary/30">
                 <p className="text-sm font-medium leading-relaxed italic text-foreground/90 whitespace-pre-wrap">
-                  "{dump.rawText || "Empty dump content"}"
+                  &ldquo;{dump.rawText || "Empty dump content"}&rdquo;
                 </p>
               </div>
             </CardContent>
@@ -190,7 +189,7 @@ export default function DumpDetailPage({ params }: PageProps) {
               {displayItems.length > 0 ? (
                 <div className="flex flex-col gap-3">
                   {displayItems.map((item) => {
-                    const config = categoryConfig[item.category as ItemCategory];
+                    const config = categoryConfig[item.category];
                     const Icon = config.icon;
                     const itemKey = item.id;
 

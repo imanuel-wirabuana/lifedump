@@ -1,23 +1,20 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useDumpStore } from "@/stores/use-dump-store";
 import { UniversalInput } from "@/components/universal-input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { CheckSquare, DollarSign, FileText, Trash2, Calendar, TrendingUp, NotebookTabs, Pencil, Loader2 } from "lucide-react";
+import { CheckSquare, DollarSign, FileText, Trash2, Calendar, TrendingUp, NotebookTabs, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EditDialog } from "@/components/edit-dialog";
-import { Item, ItemCategory } from "@/types";
-import { useItemsQuery, useUpdateItemMutation, useDeleteItemMutation } from "@/hooks/use-items";
+import { Item } from "@/types";
+import { useItemsQuery } from "@/hooks/use-items";
 import { useDumpsQuery, useDeleteDumpMutation } from "@/hooks/use-dumps";
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -35,23 +32,28 @@ function formatRelativeTime(date: Date): string {
 export default function Home() {
   const { userId } = useAuth();
   const router = useRouter();
-  const { setCurrentInputText, setExtractedItems, setCurrentDumpId, setDumpStatus } = useDumpStore();
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [isEditOpen, setIsEditOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(5);
+  const [dumpToDelete, setDumpToDelete] = useState<string | null>(null);
 
-  const { data: items, isLoading } = useItemsQuery(userId);
-
-  const { data: dumps, isLoading: isLoadingDumps } = useDumpsQuery(userId);
-
+  const { data: items = [], isLoading } = useItemsQuery(userId);
+  const { data: dumps = [], isLoading: isLoadingDumps } = useDumpsQuery(userId);
   const deleteDumpMutation = useDeleteDumpMutation(userId);
 
-  const toggleMutation = useUpdateItemMutation(userId);
-  const deleteMutation = useDeleteItemMutation(userId);
-
-  const confirmedDumps = dumps?.filter((dump) => dump.status === "confirmed") || [];
-  const recentDumps = confirmedDumps.slice(0, visibleCount);
+  const confirmedDumps = useMemo(
+    () => dumps.filter((dump) => dump.status === "confirmed"),
+    [dumps]
+  );
+  const recentDumps = useMemo(
+    () => confirmedDumps.slice(0, visibleCount),
+    [confirmedDumps, visibleCount]
+  );
   const hasNextPage = confirmedDumps.length > visibleCount;
+  const itemsByDumpId = useMemo(() => {
+    return items.reduce<Record<string, Item[]>>((groups, item) => {
+      groups[item.dumpId] = [...(groups[item.dumpId] ?? []), item];
+      return groups;
+    }, {});
+  }, [items]);
 
   // Infinite Scroll Intersection Observer
   const observerRef = useRef<HTMLDivElement | null>(null);
@@ -80,13 +82,21 @@ export default function Home() {
   }, [hasNextPage]);
 
   // Derived Stats
-  const activeTasksCount = items?.filter((i) => i.category === "task" && !i.task?.isCompleted).length || 0;
-  const notesCount = items?.filter((i) => i.category === "note").length || 0;
-  
-  const financeRecords = items?.filter((i) => i.category === "finance") || [];
-  const totalExpense = financeRecords.filter((r) => r.finance?.type === "expense").reduce((acc, r) => acc + (r.finance?.amount || 0), 0);
-  const totalIncome = financeRecords.filter((r) => r.finance?.type === "income").reduce((acc, r) => acc + (r.finance?.amount || 0), 0);
-  const netBalance = totalIncome - totalExpense;
+  const { activeTasksCount, notesCount, netBalance } = useMemo(() => {
+    const financeRecords = items.filter((i) => i.category === "finance");
+    const totalExpense = financeRecords
+      .filter((r) => r.finance?.type === "expense")
+      .reduce((acc, r) => acc + (r.finance?.amount || 0), 0);
+    const totalIncome = financeRecords
+      .filter((r) => r.finance?.type === "income")
+      .reduce((acc, r) => acc + (r.finance?.amount || 0), 0);
+
+    return {
+      activeTasksCount: items.filter((i) => i.category === "task" && !i.task?.isCompleted).length,
+      notesCount: items.filter((i) => i.category === "note").length,
+      netBalance: totalIncome - totalExpense,
+    };
+  }, [items]);
 
   const categoryConfig = {
     task: {
@@ -201,7 +211,7 @@ export default function Home() {
         ) : confirmedDumps.length > 0 ? (
           <div className="flex flex-col gap-3">
             {recentDumps.map((dump) => {
-              const dumpItems = items?.filter((item) => item.dumpId === dump.id) || [];
+              const dumpItems = itemsByDumpId[dump.id] ?? [];
 
               return (
                 <div
@@ -222,7 +232,7 @@ export default function Home() {
                     <CardContent className="p-4 flex flex-col gap-3">
                       <div className="flex items-start justify-between gap-4">
                         <p className="font-medium text-sm text-foreground/90 line-clamp-2 flex-1 italic pl-3 border-l-2 border-primary/20">
-                          "{dump.rawText || "Empty dump"}"
+                          &ldquo;{dump.rawText || "Empty dump"}&rdquo;
                         </p>
                         <div className="flex gap-1.5 shrink-0 items-center">
                           <Badge variant="outline" className="text-[10px] shrink-0 font-medium capitalize h-5 px-1.5">
@@ -234,9 +244,7 @@ export default function Home() {
                             disabled={deleteDumpMutation.isPending}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (confirm("Are you sure you want to delete this dump?")) {
-                                deleteDumpMutation.mutate(dump.id);
-                              }
+                              setDumpToDelete(dump.id);
                             }}
                             className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md shrink-0"
                             title="Delete Dump"
@@ -313,12 +321,17 @@ export default function Home() {
         )}
       </div>
 
-      <EditDialog
-        item={editingItem}
-        isOpen={isEditOpen}
-        onClose={() => {
-          setEditingItem(null);
-          setIsEditOpen(false);
+      <ConfirmDeleteDialog
+        open={!!dumpToDelete}
+        title="Delete dump?"
+        description="This removes the dump record. Generated items are not deleted automatically."
+        isPending={deleteDumpMutation.isPending}
+        onOpenChange={(open) => !open && setDumpToDelete(null)}
+        onConfirm={() => {
+          if (!dumpToDelete) return;
+          deleteDumpMutation.mutate(dumpToDelete, {
+            onSuccess: () => setDumpToDelete(null),
+          });
         }}
       />
     </div>

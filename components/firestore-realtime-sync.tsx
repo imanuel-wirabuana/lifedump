@@ -6,7 +6,7 @@ import { collection, query, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useQueryClient } from "@tanstack/react-query";
 import { mapDocToItem, mapDocToDump } from "@/services/queries";
-import { Item, Dump } from "@/types";
+import { Item } from "@/types";
 
 export function FirestoreRealtimeSync() {
   const { userId } = useAuth();

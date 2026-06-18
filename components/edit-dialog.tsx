@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Item } from "@/types";
+import { Item, ItemPatch } from "@/types";
 import {
   Dialog,
   DialogContent,
@@ -45,50 +45,50 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
   const [noteType, setNoteType] = React.useState<"general" | "journal">("general");
   const [content, setContent] = React.useState("");
 
-  const formatDateForInput = (date: Date | any) => {
+  const formatDateForInput = (date: Date | string | number | null | undefined) => {
     if (!date) return "";
-    try {
-      const dateObj = new Date(date);
-      const yyyy = dateObj.getFullYear();
-      const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-      const dd = String(dateObj.getDate()).padStart(2, "0");
-      const hh = String(dateObj.getHours()).padStart(2, "0");
-      const min = String(dateObj.getMinutes()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
-    } catch {
-      return "";
-    }
+    const dateObj = new Date(date);
+    if (Number.isNaN(dateObj.getTime())) return "";
+
+    const yyyy = dateObj.getFullYear();
+    const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
+    const dd = String(dateObj.getDate()).padStart(2, "0");
+    const hh = String(dateObj.getHours()).padStart(2, "0");
+    const min = String(dateObj.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
   };
 
   // Sync state with selected item when opened
   React.useEffect(() => {
     if (!item) return;
 
-    setTitle(item.title || "");
-    setContent(item.content || "");
+    queueMicrotask(() => {
+      setTitle(item.title || "");
+      setContent(item.content || "");
 
-    if (item.category === "task") {
-      setDueAt(formatDateForInput(item.task?.dueAt));
-      setPriority(item.task?.priority || "none");
-      setTags(item.task?.tags ? item.task.tags.join(", ") : "");
-      setSource(item.task?.source || "manual");
-    }
+      if (item.category === "task") {
+        setDueAt(formatDateForInput(item.task?.dueAt));
+        setPriority(item.task?.priority || "none");
+        setTags(item.task?.tags ? item.task.tags.join(", ") : "");
+        setSource(item.task?.source || "manual");
+      }
 
-    if (item.category === "finance" && item.finance) {
-      setAmount(item.finance.amount || 0);
-      setFinanceType(item.finance.type || "expense");
-    }
+      if (item.category === "finance" && item.finance) {
+        setAmount(item.finance.amount || 0);
+        setFinanceType(item.finance.type || "expense");
+      }
 
-    if (item.category === "note") {
-      setNoteType(item.note?.noteType || "general");
-    }
+      if (item.category === "note") {
+        setNoteType(item.note?.noteType || "general");
+      }
+    });
   }, [item, isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!item || !userId) return;
 
-    const updates: any = {
+    const updates: ItemPatch = {
       title,
       content,
     };
@@ -96,7 +96,7 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
     if (item.category === "task") {
       updates.task = {
         isCompleted: !!item.task?.isCompleted,
-        dueAt: dueAt ? new Date(dueAt) : null,
+        dueAt: dueAt ? new Date(dueAt) : undefined,
         priority,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
         source,
@@ -110,7 +110,7 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
       };
     } else if (item.category === "note") {
       updates.note = {
-        noteType: noteType,
+        noteType,
       };
     }
 

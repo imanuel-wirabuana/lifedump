@@ -31,37 +31,96 @@ const kilo = createOpenAI({
   apiKey: process.env.KILO_API_KEY || "",
 });
 
+type Category = "task" | "finance" | "note";
+
+type CategorizedItem = z.infer<typeof categorizeSchema>["items"][number];
+type UnknownRecord = Record<string, unknown>;
+
+type AiError = Error & {
+  text?: string;
+  response?: { body?: { text?: string }; text?: string };
+  cause?: { message?: string };
+};
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function isCategory(value: unknown): value is Category {
+  return value === "task" || value === "finance" || value === "note";
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function withCategory(value: unknown, category: Category): UnknownRecord {
+  return isRecord(value) ? { ...value, category } : { category, title: "Untitled Item", content: "" };
+}
+
 // Function to salvage items in case of validation failures
-function extractItemsFromRaw(json: any): any[] {
-  if (!json) return [];
-  if (json.items && Array.isArray(json.items)) return json.items;
-  if (Array.isArray(json)) return json;
+function extractItemsFromRaw(json: unknown): unknown[] {
+  if (!isRecord(json)) return Array.isArray(json) ? json : [];
+  if (Array.isArray(json.items)) return json.items;
+
   const keys = Object.keys(json);
   const isNumericIndexed = keys.length > 0 && keys.every(k => !isNaN(Number(k)));
   if (isNumericIndexed) {
     return keys
       .sort((a, b) => Number(a) - Number(b))
       .map(k => json[k])
-      .filter(item => item && typeof item === "object");
+      .filter(isRecord);
   }
-  if (json.task || json.finance || json.note) {
-    const list: any[] = [];
-    if (Array.isArray(json.task)) list.push(...json.task.map((x: any) => ({ ...x, category: "task" })));
-    if (Array.isArray(json.finance)) list.push(...json.finance.map((x: any) => ({ ...x, category: "finance" })));
-    if (Array.isArray(json.note)) list.push(...json.note.map((x: any) => ({ ...x, category: "note" })));
-    if (list.length > 0) return list;
-  }
-  if (typeof json === "object" && typeof json.category === "string" && typeof json.title === "string") {
-    return [json];
-  }
+
+  const list: UnknownRecord[] = [];
+  if (Array.isArray(json.task)) list.push(...json.task.map(item => withCategory(item, "task")));
+  if (Array.isArray(json.finance)) list.push(...json.finance.map(item => withCategory(item, "finance")));
+  if (Array.isArray(json.note)) list.push(...json.note.map(item => withCategory(item, "note")));
+  if (list.length > 0) return list;
+
+  if (isCategory(json.category) && typeof json.title === "string") return [json];
+
   for (const value of Object.values(json)) {
     if (Array.isArray(value)) return value;
   }
   return [];
 }
 
-async function executeAIStep(prompt: string): Promise<any[]> {
-  let resultObject: any = null;
+function normalizeItem(item: unknown): CategorizedItem {
+  const record = isRecord(item) ? item : {};
+  const priority = asString(record.priority, "none");
+  const financeType = asString(record.financeType, "expense");
+
+  return {
+    category: isCategory(record.category) ? record.category : "note",
+    title: asString(record.title, "Untitled Item"),
+    content: asString(record.content),
+    dueAt: asString(record.dueAt) || null,
+    priority: priority === "low" || priority === "medium" || priority === "high" ? priority : "none",
+    tags: asStringArray(record.tags),
+    financeType: financeType === "income" ? "income" : "expense",
+    amount: asNumber(record.amount),
+    currency: "IDR",
+    occurredAt: asString(record.occurredAt) || undefined,
+    confidence: asNumber(record.confidence) ?? 0.8,
+    needsClarification: asBoolean(record.needsClarification) ?? false,
+  };
+}
+
+async function executeAIStep(prompt: string): Promise<CategorizedItem[]> {
+  let resultObject: { items: CategorizedItem[] } | null = null;
 
   try {
     const { object } = await generateObject({
@@ -72,15 +131,16 @@ async function executeAIStep(prompt: string): Promise<any[]> {
       prompt,
     });
     resultObject = object;
-  } catch (error: any) {
-    console.warn("generateObject failed. Attempting salvage...", error);
-    let errorText = error.text || error.response?.body?.text || error.response?.text || "";
+  } catch (error) {
+    const aiError = error as AiError;
+    console.warn("generateObject failed. Attempting salvage...", aiError);
+    let errorText = aiError.text || aiError.response?.body?.text || aiError.response?.text || "";
     
-    if (!errorText && error.cause && typeof error.cause.message === "string") {
-      errorText = error.cause.message;
+    if (!errorText && aiError.cause && typeof aiError.cause.message === "string") {
+      errorText = aiError.cause.message;
     }
-    if (!errorText && error.message) {
-      errorText = error.message;
+    if (!errorText && aiError.message) {
+      errorText = aiError.message;
     }
 
     if (errorText) {
@@ -101,36 +161,22 @@ async function executeAIStep(prompt: string): Promise<any[]> {
         }
 
         if (salvagedItems.length > 0) {
-          const validatedItems = salvagedItems.map((item: any) => ({
-            category: item.category || "note",
-            title: item.title || "Untitled Item",
-            content: item.content || "",
-            dueAt: item.dueAt || null,
-            priority: item.priority || "none",
-            tags: Array.isArray(item.tags) ? item.tags : [],
-            financeType: item.financeType || null,
-            amount: typeof item.amount === "number" ? item.amount : null,
-            currency: item.currency || "IDR",
-            occurredAt: item.occurredAt || null,
-            confidence: typeof item.confidence === "number" ? item.confidence : 0.8,
-            needsClarification: typeof item.needsClarification === "boolean" ? item.needsClarification : false,
-          }));
-          resultObject = { items: validatedItems };
+          resultObject = { items: salvagedItems.map(normalizeItem) };
         }
       } catch (salvageError) {
         console.error("Salvage parsing failed:", salvageError);
       }
     }
     if (!resultObject) {
-      throw error;
+      throw aiError;
     }
   }
 
   return resultObject.items || [];
 }
 
-async function saveExtractedItems(dumpDocRef: any, items: any[]) {
-  const extractedItems = items.map((item: any) => {
+async function saveExtractedItems(dumpDocRef: ReturnType<typeof doc>, items: CategorizedItem[]) {
+  const extractedItems = items.map(item => {
     const base = {
       category: item.category,
       title: item.title,
@@ -138,7 +184,7 @@ async function saveExtractedItems(dumpDocRef: any, items: any[]) {
       aiConfidence: item.confidence || 0.8,
     };
 
-    const extra: Record<string, any> = {};
+    const extra: UnknownRecord = {};
     if (item.category === "task") {
       extra.task = {
         isCompleted: false,
@@ -162,7 +208,7 @@ async function saveExtractedItems(dumpDocRef: any, items: any[]) {
       };
     }
 
-    const cleanObj: Record<string, any> = {};
+    const cleanObj: UnknownRecord = {};
     const merged = { ...base, ...extra };
     for (const [k, v] of Object.entries(merged)) {
       if (v !== undefined) cleanObj[k] = v;
@@ -221,11 +267,12 @@ Text to parse: "${rawText}"`;
       const items = await executeAIStep(prompt);
       await saveExtractedItems(dumpDocRef, items);
       return { success: true, count: items.length };
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown background categorization error";
       console.error("Trigger.dev Categorize Job Error:", error);
       await updateDoc(dumpDocRef, {
         status: "failed",
-        error: error.message || "Unknown background categorization error",
+        error: message,
         updatedAt: serverTimestamp(),
       });
       throw error;
@@ -235,7 +282,7 @@ Text to parse: "${rawText}"`;
 
 export const refineTask = task({
   id: "refine-dump",
-  run: async (payload: { dumpId: string; userId: string; rawText: string; feedback: string; currentItems: any[] }) => {
+  run: async (payload: { dumpId: string; userId: string; rawText: string; feedback: string; currentItems: CategorizedItem[] }) => {
     const { dumpId, userId, rawText, feedback, currentItems } = payload;
     const dumpDocRef = doc(db, "users", userId, "dumps", dumpId);
 
@@ -272,11 +319,12 @@ Please format all timestamps with Jakarta offset (+07:00).`;
       const items = await executeAIStep(prompt);
       await saveExtractedItems(dumpDocRef, items);
       return { success: true, count: items.length };
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown background categorization error";
       console.error("Trigger.dev Refine Job Error:", error);
       await updateDoc(dumpDocRef, {
         status: "failed",
-        error: error.message || "Unknown background refinement error",
+        error: message,
         updatedAt: serverTimestamp(),
       });
       throw error;
@@ -332,11 +380,12 @@ Extract and categorize items from the original text, guided by the additional in
       const items = await executeAIStep(prompt);
       await saveExtractedItems(dumpDocRef, items);
       return { success: true, count: items.length };
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown background redo error";
       console.error("Trigger.dev Redo Job Error:", error);
       await updateDoc(dumpDocRef, {
         status: "failed",
-        error: error.message || "Unknown background redo error",
+        error: message,
         updatedAt: serverTimestamp(),
       });
       throw error;

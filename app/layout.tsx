@@ -1,4 +1,4 @@
-import { Geist, Geist_Mono, Source_Sans_3 } from "next/font/google"
+import { Geist_Mono, Source_Sans_3 } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 import { Providers } from "@/components/providers"
 

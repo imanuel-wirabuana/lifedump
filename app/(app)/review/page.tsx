@@ -24,6 +24,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dump } from "@/types";
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import { mapApiItemsToPendingItems } from "@/services/mappers";
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -49,6 +51,7 @@ export default function ReviewPage() {
   const [redoRawText, setRedoRawText] = useState("");
   const [redoFeedback, setRedoFeedback] = useState("");
   const [isSubmittingRedo, setIsSubmittingRedo] = useState(false);
+  const [dumpToDelete, setDumpToDelete] = useState<string | null>(null);
 
   const handleRedoSubmit = async () => {
     if (!redoDump) return;
@@ -74,9 +77,9 @@ export default function ReviewPage() {
 
       toast.success("Redo triggered! Dump is now processing.");
       setRedoDump(null);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Redo error:", error);
-      toast.error(error.message || "An error occurred while retrying the dump");
+      toast.error(error instanceof Error ? error.message : "An error occurred while retrying the dump");
     } finally {
       setIsSubmittingRedo(false);
     }
@@ -135,7 +138,7 @@ export default function ReviewPage() {
                 onClick={() => {
                   if (isReviewable) {
                     setCurrentInputText(dump.rawText || "");
-                    setExtractedItems(dump.extractedItems || []);
+                    setExtractedItems(mapApiItemsToPendingItems(dump.extractedItems || []));
                     setCurrentDumpId(dump.id);
                     setDumpStatus("needs_review");
                   }
@@ -151,7 +154,7 @@ export default function ReviewPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm text-foreground/90 line-clamp-3 italic pl-3 border-l-2 border-primary/20">
-                        "{dump.rawText || "Empty dump"}"
+                        &ldquo;{dump.rawText || "Empty dump"}&rdquo;
                       </p>
                       {dump.status === "failed" && dump.error && (
                         <p className="text-xs text-destructive mt-2 font-mono bg-destructive/5 dark:bg-destructive/10 p-2 rounded border border-destructive/20 pl-3">
@@ -188,16 +191,9 @@ export default function ReviewPage() {
                         variant="ghost"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
                         disabled={deleteDumpMutation.isPending}
-                        onClick={async (e) => {
+                        onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm("Are you sure you want to delete this dump?")) {
-                            try {
-                              await deleteDumpMutation.mutateAsync(dump.id);
-                              toast.success("Dump deleted successfully");
-                            } catch (err) {
-                              toast.error("Failed to delete dump");
-                            }
-                          }
+                          setDumpToDelete(dump.id);
                         }}
                       >
                         {deleteDumpMutation.isPending && deleteDumpMutation.variables === dump.id ? (
@@ -324,6 +320,23 @@ export default function ReviewPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDeleteDialog
+        open={!!dumpToDelete}
+        title="Delete dump?"
+        description="This removes the dump from your review queue. This action cannot be undone."
+        isPending={deleteDumpMutation.isPending}
+        onOpenChange={(open) => !open && setDumpToDelete(null)}
+        onConfirm={() => {
+          if (!dumpToDelete) return;
+          deleteDumpMutation.mutate(dumpToDelete, {
+            onSuccess: () => {
+              toast.success("Dump deleted successfully");
+              setDumpToDelete(null);
+            },
+            onError: () => toast.error("Failed to delete dump"),
+          });
+        }}
+      />
     </div>
   );
 }

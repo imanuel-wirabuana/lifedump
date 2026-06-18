@@ -9,20 +9,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = React.useState(false)
-
-  React.useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  if (!mounted) {
-    return (
-      <Button variant="ghost" size="icon" className="size-7 opacity-30" disabled>
-        <Sun className="size-4" />
-      </Button>
-    )
-  }
-
   const isDark = resolvedTheme === "dark"
 
   return (

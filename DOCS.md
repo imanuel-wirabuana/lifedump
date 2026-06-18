@@ -253,6 +253,7 @@ lifedump/
     *   Net cashflow (total income minus total expenses) formatted for IDR currency.
 *   **Main Input**: Embeds `<UniversalInput />` to accept new entries.
 *   **Recent Dumps Feed**: Displays user dumps in a real-time list (`useDumpsQuery` synchronized via `<FirestoreRealtimeSync />`) with client-side local pagination. Features a "Load More" button to increment the visible slice of dumps. Displays raw text, source type, creation time, previews of generated items, and a delete action. Clicking a dump navigates to `/dumps/[id]`.
+*   **Audit Hygiene**: Dashboard modules keep imports and store selectors scoped to values used by the component to avoid stale dependencies and lint noise.
 
 ### `app/(app)/dumps/[id]/page.tsx` (Dump Detail Page)
 *   **Header**: Features a back-navigation link to return to the home dashboard.
@@ -299,3 +300,9 @@ lifedump/
 ### `components/theme-provider.tsx` (Theme Engine)
 *   Integrates `next-themes` with `attribute="class"`.
 *   **Theme Hotkey**: Listens to global `keydown` events. If the user presses the letter `d` (case-insensitive) while not typing inside an input/textarea/select element, the theme resolved value toggles between `dark` and `light`.
+*   **Lint-Safe Hydration**: `<ThemeToggle />` avoids mount-only state effects and relies on CSS/theme classes plus `next-themes` resolution for icon state.
+
+### API Route Type-Safety & Trigger Integration
+*   API routes parse `req.json()` into narrow body shapes instead of `any`, validate required fields before side effects, and return safe fallback error messages for unknown thrown values.
+*   Trigger routes (`trigger-categorize`, `trigger-redo`, `trigger-refine`) create/update dump status then enqueue Trigger.dev jobs with typed payloads.
+*   AI categorization salvage paths normalize raw/partial LLM output through shared typed guards before persisting or returning items.

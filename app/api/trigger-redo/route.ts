@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/services/firebase";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, updateDoc, serverTimestamp, type FieldValue } from "firebase/firestore";
 import { tasks } from "@trigger.dev/sdk";
 
 export async function POST(req: Request) {
@@ -12,7 +12,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { dumpId, rawText, feedback } = await req.json();
+    const body = (await req.json()) as { dumpId?: string; rawText?: string | null; feedback?: string };
+    const { dumpId, rawText, feedback } = body;
 
     if (!dumpId) {
       return NextResponse.json({ error: "Dump ID is required" }, { status: 400 });
@@ -27,8 +28,8 @@ export async function POST(req: Request) {
     const dumpData = dumpDoc.data();
 
     // 2. Determine rawText and prepare update payload
-    let finalRawText = dumpData.rawText;
-    const updatePayload: Record<string, any> = {
+    let finalRawText = typeof dumpData.rawText === "string" ? dumpData.rawText : "";
+    const updatePayload: { status: "processing"; updatedAt: FieldValue; rawText?: string } = {
       status: "processing",
       updatedAt: serverTimestamp(),
     };
@@ -49,8 +50,9 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ dumpId, status: "processing" }, { status: 202 });
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Trigger redo failed";
     console.error("Trigger Redo Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -9,12 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckSquare, Trash2, Calendar, AlertCircle, Pencil, Tag, Bell, Sparkles, Filter, ArrowUpDown, Clock } from "lucide-react";
+import { CheckSquare, Trash2, Calendar, AlertCircle, Pencil, Tag, Sparkles, Filter, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditDialog } from "@/components/edit-dialog";
 import { Item } from "@/types";
 import { useItemsByCategoryQuery, useToggleItemTaskMutation, useDeleteItemMutation } from "@/hooks/use-items";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+type SortBy = "dueDate" | "priority" | "title" | "createdAt";
 
 export default function TasksPage() {
   const { userId } = useAuth();
@@ -29,7 +31,7 @@ export default function TasksPage() {
   // Filter and Sorting state
   const [filterTag, setFilterTag] = useState<string>("all");
   const [filterPriority, setFilterPriority] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"dueDate" | "priority" | "title" | "createdAt">("createdAt");
+  const [sortBy, setSortBy] = useState<SortBy>("createdAt");
 
   const allTags = Array.from(
     new Set(
@@ -329,7 +331,7 @@ export default function TasksPage() {
             )}
 
             {/* Sort Control */}
-            <Select value={sortBy} onValueChange={(val) => setSortBy(val as any)}>
+            <Select value={sortBy} onValueChange={(val) => setSortBy(val as SortBy)}>
               <SelectTrigger className="h-8 rounded-full bg-background/50 border border-border/60 hover:bg-muted/50 transition-all duration-200 gap-1.5 text-xs font-medium px-3 text-muted-foreground hover:text-foreground cursor-pointer">
                 <ArrowUpDown className="size-3 shrink-0" />
                 <SelectValue />

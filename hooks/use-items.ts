@@ -1,20 +1,22 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAllItems, getItemsByCategory, updateItemTask, deleteItem, updateItem } from "@/services/queries";
-import { ItemCategory, Item } from "@/types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { deleteItem, updateItem, updateItemTask } from "@/services/queries";
+import { Item, ItemCategory, ItemPatch } from "@/types";
 
 export function useItemsQuery(userId: string | null | undefined) {
-  return useQuery({
+  return useQuery<Item[]>({
     queryKey: ["items", userId],
-    queryFn: () => getAllItems(userId!),
+    queryFn: async () => [],
     enabled: !!userId,
+    staleTime: Infinity,
   });
 }
 
 export function useItemsByCategoryQuery(userId: string | null | undefined, category: ItemCategory) {
-  return useQuery({
+  return useQuery<Item[]>({
     queryKey: ["items", userId, category],
-    queryFn: () => getItemsByCategory(userId!, category),
+    queryFn: async () => [],
     enabled: !!userId,
+    staleTime: Infinity,
   });
 }
 
@@ -43,7 +45,7 @@ export function useDeleteItemMutation(userId: string | null | undefined) {
 export function useUpdateItemMutation(userId: string | null | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, category, updates }: { id: string; category: ItemCategory; updates: Partial<Item> }) =>
+    mutationFn: ({ id, category, updates }: { id: string; category: ItemCategory; updates: ItemPatch }) =>
       updateItem(userId!, id, category, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["items", userId] });

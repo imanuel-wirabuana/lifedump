@@ -1,7 +1,8 @@
 import { PendingItem } from "@/stores/use-dump-store";
+import { ExtractedItem } from "@/types";
 
-export function mapApiItemsToPendingItems(apiItems: any[]): PendingItem[] {
-  return (apiItems || []).map((raw: any) => {
+export function mapApiItemsToPendingItems(apiItems: ExtractedItem[] = []): PendingItem[] {
+  return apiItems.map((raw) => {
     const item: PendingItem = {
       category: raw.category,
       title: raw.title,
