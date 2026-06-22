@@ -1,159 +1,169 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useAuth } from "@clerk/nextjs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { FileText, Trash2, Search, Pencil, Pin } from "lucide-react";
-import { EditDialog } from "@/components/edit-dialog";
-import { Item } from "@/types";
-import { useItemsByCategoryQuery, useDeleteItemMutation, useUpdateItemMutation } from "@/hooks/use-items";
+import { useMemo, useState } from "react"
+import { useAuth } from "@clerk/nextjs"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group"
+import { FileText, Plus, Trash2, Search, Pencil, Pin } from "lucide-react"
+import { EditDialog } from "@/components/edit-dialog"
+import { AddItemDialog } from "@/components/add-item-dialog"
+import { Item, ItemCategory } from "@/types"
+import { cn } from "@/lib/utils"
+import { ItemCard, ItemCardSkeleton } from "@/components/item-card"
+import {
+  useItemsByCategoryQuery,
+  useDeleteItemMutation,
+  useUpdateItemMutation,
+} from "@/hooks/use-items"
 
 export default function NotesPage() {
-  const { userId } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [isEditOpen, setIsEditOpen] = useState(false);
+  const { userId } = useAuth()
+  const [searchQuery, setSearchQuery] = useState("")
+  const [editingItem, setEditingItem] = useState<Item | null>(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [addCategory, setAddCategory] = useState<ItemCategory | null>(null)
 
-  const { data: notes, isLoading } = useItemsByCategoryQuery(userId, "note");
+  const { data: notes, isLoading } = useItemsByCategoryQuery(userId, "note")
 
-  const deleteMutation = useDeleteItemMutation(userId);
-  const updateMutation = useUpdateItemMutation(userId);
+  const deleteMutation = useDeleteItemMutation(userId)
+  const updateMutation = useUpdateItemMutation(userId)
+
+  const filteredNotes = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+    const source = [...(notes || [])].sort((a, b) => {
+      if (!!a.isPinned !== !!b.isPinned) return a.isPinned ? -1 : 1
+      return (
+        new Date(b.createdAt || 0).getTime() -
+        new Date(a.createdAt || 0).getTime()
+      )
+    })
+    if (!normalizedQuery) return source
+
+    return source.filter((note) => {
+      return (
+        note.title.toLowerCase().includes(normalizedQuery) ||
+        note.content.toLowerCase().includes(normalizedQuery) ||
+        note.tags?.some((tag) => tag.toLowerCase().includes(normalizedQuery))
+      )
+    })
+  }, [notes, searchQuery])
 
   if (isLoading) {
     return (
-      <div className="flex flex-col p-4 md:p-8 max-w-2xl mx-auto w-full pt-8 gap-6">
+      <div className="ld-page-shell">
         <Skeleton className="h-9 w-24" />
         <Skeleton className="h-9 w-full" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="p-4 pb-2">
-                <div className="flex items-center gap-2">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-5 w-14 rounded-full" />
-                </div>
-              </CardHeader>
-              <CardContent className="p-4 pt-0 space-y-2">
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-2/3" />
-                <Skeleton className="h-3 w-20 mt-2" />
-              </CardContent>
-            </Card>
+            <ItemCardSkeleton key={i} variant="grid" />
           ))}
         </div>
       </div>
-    );
+    )
   }
 
-  // Filtering Logic
-  const filteredNotes = (notes || []).filter((note) => {
-    const matchesSearch =
-      note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (note.content && note.content.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    return matchesSearch;
-  });
-
   return (
-    <div className="flex flex-col p-4 md:p-8 max-w-2xl mx-auto w-full pt-8 gap-6">
+    <div className="ld-page-shell">
       {/* Page Title */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Notes</h1>
-        <p className="text-sm text-muted-foreground mt-1">Keep track of your thoughts, ideas, and journal entries.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="ld-page-kicker">Memory bank</p>
+          <h1 className="ld-page-title">Notes</h1>
+          <p className="ld-page-subtitle">
+            Keep track of your thoughts, ideas, and journal entries.
+          </p>
+        </div>
+        <Button
+          onClick={() => setAddCategory("note")}
+          className="h-9 gap-1.5 rounded-full px-4 text-xs font-bold shadow-sm"
+        >
+          <Plus className="size-4" /> Add Note
+        </Button>
       </div>
 
       {/* Search & Filter Controls */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row">
         <InputGroup className="h-9 flex-1">
           <InputGroupAddon align="inline-start">
             <Search className="size-3.5 text-muted-foreground" />
           </InputGroupAddon>
           <InputGroupInput
-            placeholder="Search notes..."
+            placeholder="Search notes, content, or tags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="text-sm"
           />
         </InputGroup>
-
       </div>
 
       {/* Notes Grid */}
       {filteredNotes.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {filteredNotes.map((note) => (
-              <Card
-                key={note.id}
-                className="border-border/50 shadow-sm hover:border-border hover:shadow transition-all flex flex-col justify-between"
-              >
-                <div>
-                  <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <CardTitle className="text-sm font-semibold truncate pr-1">{note.title}</CardTitle>
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {note.isPinned && <Badge variant="secondary" className="text-[9px] uppercase px-1 py-0 h-4 font-bold tracking-wider">Pinned</Badge>}
-                        {(note.tags || []).slice(0, 2).map((tag) => <Badge key={tag} variant="outline" className="text-[9px] px-1 py-0 h-4">{tag}</Badge>)}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-0.5 -mt-1 -mr-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => updateMutation.mutate({ id: note.id, category: "note", updates: { isPinned: !note.isPinned } })}
-                        className="text-muted-foreground hover:text-foreground size-7 rounded-md"
-                      >
-                        <Pin className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setEditingItem(note);
-                          setIsEditOpen(true);
-                        }}
-                        className="text-muted-foreground hover:text-foreground size-7 rounded-md"
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteMutation.mutate({ id: note.id, category: "note" })}
-                        className="text-muted-foreground hover:text-destructive size-7 rounded-md"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0">
-                    {note.content && (
-                      <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4 leading-relaxed">
-                        {note.content}
-                      </p>
+            <ItemCard
+              key={note.id}
+              item={note}
+              variant="grid"
+              showTimestamp
+              actions={
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      updateMutation.mutate({
+                        id: note.id,
+                        category: "note",
+                        updates: { isPinned: !note.isPinned },
+                      })
+                    }
+                    className={cn(
+                      "size-7 rounded-md text-muted-foreground hover:text-foreground",
+                      note.isPinned && "bg-primary/10 text-primary"
                     )}
-                  </CardContent>
-                </div>
-                <div className="px-4 pb-4 pt-0">
-                  <p className="text-[10px] text-muted-foreground font-medium" suppressHydrationWarning>
-                    {new Date(note.createdAt).toLocaleString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-              </Card>
+                  >
+                    <Pin className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setEditingItem(note)
+                      setIsEditOpen(true)
+                    }}
+                    className="size-7 rounded-md text-muted-foreground hover:text-foreground"
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      deleteMutation.mutate({ id: note.id, category: "note" })
+                    }
+                    className="size-7 rounded-md text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </>
+              }
+            />
           ))}
         </div>
       ) : (
-        <Empty className="py-16 border-border/40">
+        <Empty className="border-border/40 py-16">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <FileText />
@@ -172,10 +182,15 @@ export default function NotesPage() {
         item={editingItem}
         isOpen={isEditOpen}
         onClose={() => {
-          setEditingItem(null);
-          setIsEditOpen(false);
+          setEditingItem(null)
+          setIsEditOpen(false)
         }}
       />
+      <AddItemDialog
+        category={addCategory}
+        isOpen={addCategory !== null}
+        onClose={() => setAddCategory(null)}
+      />
     </div>
-  );
+  )
 }

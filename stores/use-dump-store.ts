@@ -1,9 +1,28 @@
 import { create } from "zustand";
-import { Item } from "@/types";
+import { ItemCategory } from "@/types";
 
-export type PendingItem = Omit<Item, "id" | "userId" | "dumpId" | "createdAt" | "updatedAt"> & {
+export type PendingItem = {
   id?: string;
+  category: ItemCategory;
+  title: string;
+  content?: string;
+  tags?: string[];
+  source?: "manual" | "ai";
+  aiConfidence?: number;
   needsClarification?: boolean;
+  task?: {
+    isCompleted: boolean;
+    dueAt?: Date;
+    priority?: "none" | "low" | "medium" | "high";
+  };
+  finance?: {
+    type: "expense" | "income";
+    amount: number;
+    currency: "IDR";
+    occurredAt?: Date;
+    paymentMethod?: string;
+  };
+  isPinned?: boolean;
 };
 
 interface DumpStore {
@@ -27,10 +46,11 @@ export const useDumpStore = create<DumpStore>((set) => ({
   setDumpStatus: (status) => set({ dumpStatus: status }),
   currentDumpId: null,
   setCurrentDumpId: (id) => set({ currentDumpId: id }),
-  clearState: () => set({
-    currentInputText: "",
-    extractedItems: [],
-    dumpStatus: "idle",
-    currentDumpId: null,
-  })
+  clearState: () =>
+    set({
+      currentInputText: "",
+      extractedItems: [],
+      dumpStatus: "idle",
+      currentDumpId: null,
+    }),
 }));

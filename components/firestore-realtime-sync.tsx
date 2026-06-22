@@ -1,27 +1,40 @@
-"use client";
+"use client"
 
-import { useEffect, useRef } from "react";
-import { useAuth } from "@clerk/nextjs";
-import { collection, query, onSnapshot } from "firebase/firestore";
-import { db } from "@/services/firebase";
-import { useQueryClient } from "@tanstack/react-query";
-import { mapDocToItem, mapDocToDump } from "@/services/queries";
-import { Item } from "@/types";
+import { useEffect, useRef, type MutableRefObject } from "react"
+import { useAuth } from "@clerk/nextjs"
+import { useQueryClient } from "@tanstack/react-query"
+import { collection, doc, onSnapshot, query } from "firebase/firestore"
+import { queryKeys } from "@/lib/app-constants"
+import { db } from "@/services/firebase"
+import { mapDocToDump, mapDocToItem } from "@/services/queries"
+import type { Item, ItemCategory } from "@/types"
+import { normalizeSettings, SETTINGS_KEY } from "@/hooks/use-settings"
+
+type ItemRef = MutableRefObject<Item[] | null>
+type DatedRecord = { createdAt?: Date }
+
+function sortByCreatedAtDesc<T extends DatedRecord>(items: T[]) {
+  return items.sort((a, b) => {
+    const timeA = a.createdAt?.getTime() || 0
+    const timeB = b.createdAt?.getTime() || 0
+    return timeB - timeA
+  })
+}
 
 export function FirestoreRealtimeSync() {
-  const { userId } = useAuth();
-  const queryClient = useQueryClient();
+  const { userId } = useAuth()
+  const queryClient = useQueryClient()
 
-  const tasksRef = useRef<Item[] | null>(null);
-  const financesRef = useRef<Item[] | null>(null);
-  const notesRef = useRef<Item[] | null>(null);
+  const tasksRef = useRef<Item[] | null>(null)
+  const financesRef = useRef<Item[] | null>(null)
+  const notesRef = useRef<Item[] | null>(null)
 
   useEffect(() => {
     if (!userId) {
-      tasksRef.current = null;
-      financesRef.current = null;
-      notesRef.current = null;
-      return;
+      tasksRef.current = null
+      financesRef.current = null
+      notesRef.current = null
+      return
     }
 
     const updateMergedItems = () => {
@@ -30,100 +43,93 @@ export function FirestoreRealtimeSync() {
         financesRef.current === null ||
         notesRef.current === null
       ) {
-        return;
+        return
       }
-      const merged = [
+
+      const merged = sortByCreatedAtDesc([
         ...tasksRef.current,
         ...financesRef.current,
         ...notesRef.current,
-      ].sort((a, b) => {
-        const timeA = a.createdAt?.getTime() || 0;
-        const timeB = b.createdAt?.getTime() || 0;
-        return timeB - timeA;
-      });
-      queryClient.setQueryData(["items", userId], merged);
-    };
+      ])
+      queryClient.setQueryData(queryKeys.items(userId), merged)
+    }
 
-    // 1. Dumps listener
-    const dumpsQuery = query(collection(db, "users", userId, "dumps"));
-    const unsubscribeDumps = onSnapshot(dumpsQuery, (snapshot) => {
-      const dumps = snapshot.docs.map((docSnap) =>
-        mapDocToDump(docSnap.id, docSnap.data())
-      );
-      const sortedDumps = dumps.sort((a, b) => {
-        const timeA = a.createdAt?.getTime() || 0;
-        const timeB = b.createdAt?.getTime() || 0;
-        return timeB - timeA;
-      });
-      queryClient.setQueryData(["dumps", userId], sortedDumps);
-      sortedDumps.forEach((dump) => {
-        queryClient.setQueryData(["dump", dump.id, userId], dump);
-      });
-    }, (error) => {
-      console.error("Error in dumps listener:", error);
-    });
+    const createItemListener = (
+      collectionName: string,
+      category: ItemCategory,
+      itemRef: ItemRef
+    ) => {
+      const itemQuery = query(collection(db, "users", userId, collectionName))
 
-    // 2. Tasks listener
-    const tasksQuery = query(collection(db, "users", userId, "tasks"));
-    const unsubscribeTasks = onSnapshot(tasksQuery, (snapshot) => {
-      const tasks = snapshot.docs.map((docSnap) =>
-        mapDocToItem(docSnap.id, docSnap.data(), "task")
-      );
-      const sortedTasks = tasks.sort((a, b) => {
-        const timeA = a.createdAt?.getTime() || 0;
-        const timeB = b.createdAt?.getTime() || 0;
-        return timeB - timeA;
-      });
-      tasksRef.current = sortedTasks;
-      queryClient.setQueryData(["items", userId, "task"], sortedTasks);
-      updateMergedItems();
-    }, (error) => {
-      console.error("Error in tasks listener:", error);
-    });
+      return onSnapshot(
+        itemQuery,
+        (snapshot) => {
+          const items = snapshot.docs.map((docSnap) =>
+            mapDocToItem(docSnap.id, docSnap.data(), category)
+          )
+          const sortedItems = sortByCreatedAtDesc(items)
 
-    // 3. Finances listener
-    const financesQuery = query(collection(db, "users", userId, "finances"));
-    const unsubscribeFinances = onSnapshot(financesQuery, (snapshot) => {
-      const finances = snapshot.docs.map((docSnap) =>
-        mapDocToItem(docSnap.id, docSnap.data(), "finance")
-      );
-      const sortedFinances = finances.sort((a, b) => {
-        const timeA = a.createdAt?.getTime() || 0;
-        const timeB = b.createdAt?.getTime() || 0;
-        return timeB - timeA;
-      });
-      financesRef.current = sortedFinances;
-      queryClient.setQueryData(["items", userId, "finance"], sortedFinances);
-      updateMergedItems();
-    }, (error) => {
-      console.error("Error in finances listener:", error);
-    });
+          itemRef.current = sortedItems
+          queryClient.setQueryData(
+            queryKeys.itemsByCategory(userId, category),
+            sortedItems
+          )
+          updateMergedItems()
+        },
+        (error) => {
+          console.error(`Error in ${collectionName} listener:`, error)
+        }
+      )
+    }
 
-    // 4. Notes listener
-    const notesQuery = query(collection(db, "users", userId, "notes"));
-    const unsubscribeNotes = onSnapshot(notesQuery, (snapshot) => {
-      const notes = snapshot.docs.map((docSnap) =>
-        mapDocToItem(docSnap.id, docSnap.data(), "note")
-      );
-      const sortedNotes = notes.sort((a, b) => {
-        const timeA = a.createdAt?.getTime() || 0;
-        const timeB = b.createdAt?.getTime() || 0;
-        return timeB - timeA;
-      });
-      notesRef.current = sortedNotes;
-      queryClient.setQueryData(["items", userId, "note"], sortedNotes);
-      updateMergedItems();
-    }, (error) => {
-      console.error("Error in notes listener:", error);
-    });
+    const dumpsQuery = query(collection(db, "users", userId, "dumps"))
+    const unsubscribeDumps = onSnapshot(
+      dumpsQuery,
+      (snapshot) => {
+        const dumps = snapshot.docs.map((docSnap) =>
+          mapDocToDump(docSnap.id, docSnap.data())
+        )
+        const sortedDumps = sortByCreatedAtDesc(dumps)
+
+        queryClient.setQueryData(queryKeys.dumps(userId), sortedDumps)
+        sortedDumps.forEach((dump) => {
+          queryClient.setQueryData(queryKeys.dump(dump.id, userId), dump)
+        })
+      },
+      (error) => {
+        console.error("Error in dumps listener:", error)
+      }
+    )
+
+    const unsubscribeTasks = createItemListener("tasks", "task", tasksRef)
+    const unsubscribeFinances = createItemListener(
+      "finances",
+      "finance",
+      financesRef
+    )
+    const unsubscribeNotes = createItemListener("notes", "note", notesRef)
+    const unsubscribeSettings = onSnapshot(
+      doc(db, "users", userId, "settings", "app"),
+      (snapshot) => {
+        if (!snapshot.exists()) return
+        window.localStorage.setItem(
+          SETTINGS_KEY,
+          JSON.stringify(normalizeSettings(snapshot.data()))
+        )
+      },
+      (error) => {
+        console.error("Error in settings listener:", error)
+      }
+    )
 
     return () => {
-      unsubscribeDumps();
-      unsubscribeTasks();
-      unsubscribeFinances();
-      unsubscribeNotes();
-    };
-  }, [userId, queryClient]);
+      unsubscribeDumps()
+      unsubscribeTasks()
+      unsubscribeFinances()
+      unsubscribeNotes()
+      unsubscribeSettings()
+    }
+  }, [userId, queryClient])
 
-  return null;
+  return null
 }

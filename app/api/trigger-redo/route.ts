@@ -1,45 +1,66 @@
-import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { db } from "@/services/firebase";
-import { doc, getDoc, updateDoc, serverTimestamp, type FieldValue } from "firebase/firestore";
-import { tasks } from "@trigger.dev/sdk";
+import { NextResponse } from "next/server"
+import { auth } from "@clerk/nextjs/server"
+import { db } from "@/services/firebase"
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  serverTimestamp,
+  type FieldValue,
+} from "firebase/firestore"
+import { tasks } from "@trigger.dev/sdk"
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
+  const { userId } = await auth()
 
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   try {
-    const body = (await req.json()) as { dumpId?: string; rawText?: string | null; feedback?: string };
-    const { dumpId, rawText, feedback } = body;
+    const body = (await req.json()) as {
+      dumpId?: string
+      rawText?: string | null
+      feedback?: string
+      aiBaseUrl?: string
+      aiApiKey?: string
+      aiModel?: string
+    }
+    const { dumpId, rawText, feedback } = body
 
     if (!dumpId) {
-      return NextResponse.json({ error: "Dump ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Dump ID is required" },
+        { status: 400 }
+      )
     }
 
     // 1. Get the dump document to retrieve the raw text
-    const dumpDocRef = doc(db, "users", userId, "dumps", dumpId);
-    const dumpDoc = await getDoc(dumpDocRef);
+    const dumpDocRef = doc(db, "users", userId, "dumps", dumpId)
+    const dumpDoc = await getDoc(dumpDocRef)
     if (!dumpDoc.exists()) {
-      return NextResponse.json({ error: "Dump not found" }, { status: 404 });
+      return NextResponse.json({ error: "Dump not found" }, { status: 404 })
     }
-    const dumpData = dumpDoc.data();
+    const dumpData = dumpDoc.data()
 
     // 2. Determine rawText and prepare update payload
-    let finalRawText = typeof dumpData.rawText === "string" ? dumpData.rawText : "";
-    const updatePayload: { status: "processing"; updatedAt: FieldValue; rawText?: string } = {
+    let finalRawText =
+      typeof dumpData.rawText === "string" ? dumpData.rawText : ""
+    const updatePayload: {
+      status: "processing"
+      updatedAt: FieldValue
+      rawText?: string
+    } = {
       status: "processing",
       updatedAt: serverTimestamp(),
-    };
-
-    if (rawText !== undefined && rawText !== null) {
-      updatePayload.rawText = rawText;
-      finalRawText = rawText;
     }
 
-    await updateDoc(dumpDocRef, updatePayload);
+    if (rawText !== undefined && rawText !== null) {
+      updatePayload.rawText = rawText
+      finalRawText = rawText
+    }
+
+    await updateDoc(dumpDocRef, updatePayload)
 
     // 3. Trigger the Trigger.dev redo task
     await tasks.trigger("redo-dump", {
@@ -47,12 +68,18 @@ export async function POST(req: Request) {
       userId,
       rawText: finalRawText,
       feedback: feedback && feedback.trim() ? feedback : undefined,
-    });
+      aiSettings: {
+        baseUrl: body.aiBaseUrl,
+        apiKey: body.aiApiKey,
+        model: body.aiModel,
+      },
+    })
 
-    return NextResponse.json({ dumpId, status: "processing" }, { status: 202 });
+    return NextResponse.json({ dumpId, status: "processing" }, { status: 202 })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Trigger redo failed";
-    console.error("Trigger Redo Error:", error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const message =
+      error instanceof Error ? error.message : "Trigger redo failed"
+    console.error("Trigger Redo Error:", error)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

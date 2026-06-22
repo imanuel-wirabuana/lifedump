@@ -1,25 +1,115 @@
-import { deleteDoc, doc, DocumentData, Timestamp, updateDoc } from "firebase/firestore";
-import { db } from "./firebase";
-import { Dump, Item, ItemCategory, ItemPatch } from "@/types";
+import {
+  deleteDoc,
+  doc,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+  updateDoc,
+  type DocumentData,
+} from "firebase/firestore"
+import { ITEM_COLLECTIONS } from "@/lib/app-constants"
+import type {
+  Dump,
+  FinanceData,
+  Item,
+  ItemCategory,
+  ItemPatch,
+  ItemSource,
+  TaskData,
+} from "@/types"
+import { db } from "./firebase"
 
-// Helper to safely convert Firestore Timestamp or date-like values to a JS Date.
-export function toDate(value: unknown): Date {
-  if (!value) return new Date();
-  if (value instanceof Timestamp) return value.toDate();
-  if (typeof value === "object" && value !== null && "seconds" in value) {
-    const seconds = Number((value as { seconds: unknown }).seconds);
-    return Number.isFinite(seconds) ? new Date(seconds * 1000) : new Date();
-  }
-  return new Date(value as string | number | Date);
+function hasSecondsField(value: unknown): value is { seconds: unknown } {
+  return typeof value === "object" && value !== null && "seconds" in value
 }
 
-export function mapDocToItem(id: string, data: DocumentData, category: ItemCategory): Item {
-  const task = data.task as DocumentData | undefined;
-  const finance = data.finance as DocumentData | undefined;
-  const note = data.note as DocumentData | undefined;
+export function toDate(value: unknown): Date {
+  if (!value) return new Date()
+  if (value instanceof Timestamp) return value.toDate()
+  if (hasSecondsField(value)) {
+    const seconds = Number(value.seconds)
+    return Number.isFinite(seconds) ? new Date(seconds * 1000) : new Date()
+  }
+  return new Date(value as string | number | Date)
+}
 
-  const tags = Array.isArray(data.tags) ? data.tags : Array.isArray(task?.tags) ? task.tags : Array.isArray(finance?.tags) ? finance.tags : [];
-  const source = data.source === "manual" || data.source === "ai" ? data.source : task?.source === "manual" || task?.source === "ai" ? task.source : finance?.source === "manual" || finance?.source === "ai" ? finance.source : "manual";
+function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const clean: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue
+
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      !(value instanceof Date)
+    ) {
+      clean[key] = stripUndefined(value as Record<string, unknown>)
+    } else {
+      clean[key] = value
+    }
+  }
+
+  return clean as T
+}
+
+function extractTags(
+  data: DocumentData,
+  task?: DocumentData,
+  finance?: DocumentData
+): string[] {
+  if (Array.isArray(data.tags)) return data.tags
+  if (Array.isArray(task?.tags)) return task.tags
+  if (Array.isArray(finance?.tags)) return finance.tags
+  return []
+}
+
+function extractSource(
+  data: DocumentData,
+  task?: DocumentData,
+  finance?: DocumentData
+): "manual" | "ai" {
+  if (data.source === "manual" || data.source === "ai") return data.source
+  if (task?.source === "manual" || task?.source === "ai") return task.source
+  if (finance?.source === "manual" || finance?.source === "ai") {
+    return finance.source
+  }
+  return "manual"
+}
+
+function extractTaskData(task: DocumentData | undefined): TaskData | undefined {
+  if (!task) return undefined
+  return {
+    isCompleted: Boolean(task.isCompleted),
+    dueAt: task.dueAt ? toDate(task.dueAt) : undefined,
+    priority: task.priority ?? "none",
+  }
+}
+
+function extractFinanceData(
+  finance: DocumentData | undefined
+): FinanceData | undefined {
+  if (!finance) return undefined
+  return {
+    type: finance.type === "income" ? "income" : "expense",
+    amount: Number(finance.amount ?? 0),
+    currency: "IDR",
+    occurredAt: toDate(finance.occurredAt),
+    paymentMethod:
+      typeof finance.paymentMethod === "string"
+        ? finance.paymentMethod
+        : undefined,
+  }
+}
+
+export function mapDocToItem(
+  id: string,
+  data: DocumentData,
+  category: ItemCategory
+): Item {
+  const task = data.task as DocumentData | undefined
+  const finance = data.finance as DocumentData | undefined
 
   return {
     id,
@@ -28,28 +118,19 @@ export function mapDocToItem(id: string, data: DocumentData, category: ItemCateg
     category,
     title: String(data.title ?? "Untitled"),
     content: String(data.content ?? ""),
-    tags,
-    source,
-    task: task ? {
-      isCompleted: Boolean(task.isCompleted),
-      dueAt: task.dueAt ? toDate(task.dueAt) : undefined,
-      priority: task.priority ?? "none",
-    } : undefined,
-    finance: finance ? {
-      type: finance.type === "income" ? "income" : "expense",
-      amount: Number(finance.amount ?? 0),
-      currency: "IDR",
-      occurredAt: toDate(finance.occurredAt),
-      paymentMethod: typeof finance.paymentMethod === "string" ? finance.paymentMethod : undefined,
-    } : undefined,
-    note: note ? {
-      noteType: note.noteType === "journal" ? "journal" : "general",
-    } : undefined,
+    tags: extractTags(data, task, finance),
+    source: extractSource(data, task, finance),
+    task: extractTaskData(task),
+    finance: extractFinanceData(finance),
+    note: data.note
+      ? { noteType: data.note.noteType === "journal" ? "journal" : "general" }
+      : undefined,
     isPinned: Boolean(data.isPinned),
-    aiConfidence: typeof data.aiConfidence === "number" ? data.aiConfidence : undefined,
+    aiConfidence:
+      typeof data.aiConfidence === "number" ? data.aiConfidence : undefined,
     createdAt: toDate(data.createdAt),
     updatedAt: toDate(data.updatedAt),
-  };
+  }
 }
 
 export function mapDocToDump(id: string, data: DocumentData): Dump {
@@ -61,41 +142,91 @@ export function mapDocToDump(id: string, data: DocumentData): Dump {
     transcript: data.transcript,
     mediaPath: data.mediaPath,
     status: data.status ?? "processing",
-    extractedItems: Array.isArray(data.extractedItems) ? data.extractedItems : null,
+    extractedItems: Array.isArray(data.extractedItems)
+      ? data.extractedItems
+      : null,
     error: data.error ?? null,
     createdAt: toDate(data.createdAt),
     updatedAt: toDate(data.updatedAt),
-  };
+  }
 }
 
-const collectionNameMap = {
-  task: "tasks",
-  finance: "finances",
-  note: "notes",
-} as const;
+export async function createItem(payload: CreateItemPayload) {
+  const collectionName = ITEM_COLLECTIONS[payload.category]
+  const itemRef = doc(collection(db, "users", payload.userId, collectionName))
 
-export async function deleteItem(userId: string, itemId: string, category: ItemCategory) {
-  const collectionName = collectionNameMap[category];
-  await deleteDoc(doc(db, "users", userId, collectionName, itemId));
+  await setDoc(itemRef, stripUndefined(buildCreateItemDocument(payload)))
+  return { id: itemRef.id }
 }
 
-export async function updateItemTask(userId: string, itemId: string, isCompleted: boolean) {
-  const itemRef = doc(db, "users", userId, "tasks", itemId);
+export type CreateItemPayload = Omit<
+  Item,
+  "id" | "userId" | "createdAt" | "updatedAt"
+> & {
+  userId: string
+  source?: ItemSource
+}
+
+function buildCreateItemDocument(payload: CreateItemPayload) {
+  const document: Record<string, unknown> = {
+    userId: payload.userId,
+    category: payload.category,
+    title: payload.title,
+    content: payload.content || "",
+    tags: payload.tags || [],
+    source: payload.source || "manual",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }
+
+  if (payload.task) document.task = payload.task
+  if (payload.finance) document.finance = payload.finance
+  if (payload.note) document.note = payload.note
+  if (payload.isPinned) document.isPinned = payload.isPinned
+  if (payload.dumpId) document.dumpId = payload.dumpId
+  if (typeof payload.aiConfidence === "number") {
+    document.aiConfidence = payload.aiConfidence
+  }
+
+  return document
+}
+
+export async function deleteItem(
+  userId: string,
+  itemId: string,
+  category: ItemCategory
+) {
+  await deleteDoc(doc(db, "users", userId, ITEM_COLLECTIONS[category], itemId))
+}
+
+export async function updateItemTask(
+  userId: string,
+  itemId: string,
+  isCompleted: boolean
+) {
+  const itemRef = doc(db, "users", userId, ITEM_COLLECTIONS.task, itemId)
   await updateDoc(itemRef, {
     "task.isCompleted": isCompleted,
-    updatedAt: new Date(),
-  });
+    updatedAt: serverTimestamp(),
+  })
 }
 
-export async function updateItem(userId: string, itemId: string, category: ItemCategory, updates: ItemPatch) {
-  const collectionName = collectionNameMap[category];
-  const itemRef = doc(db, "users", userId, collectionName, itemId);
-  await updateDoc(itemRef, {
-    ...updates,
-    updatedAt: new Date(),
-  });
+export async function updateItem(
+  userId: string,
+  itemId: string,
+  category: ItemCategory,
+  updates: ItemPatch
+) {
+  const itemRef = doc(db, "users", userId, ITEM_COLLECTIONS[category], itemId)
+  await updateDoc(
+    itemRef,
+    stripUndefined({
+      ...updates,
+      updatedAt: serverTimestamp(),
+    } as Record<string, unknown>)
+  )
 }
 
 export async function deleteDump(userId: string, dumpId: string) {
-  await deleteDoc(doc(db, "users", userId, "dumps", dumpId));
+  await deleteDoc(doc(db, "users", userId, "dumps", dumpId))
 }

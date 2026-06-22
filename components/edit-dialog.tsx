@@ -1,140 +1,152 @@
-"use client";
+"use client"
 
-import * as React from "react";
-import { useAuth } from "@clerk/nextjs";
-import { Item, ItemPatch } from "@/types";
+import * as React from "react"
+import { useAuth } from "@clerk/nextjs"
+import { Item, ItemPatch } from "@/types"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
-import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { useUpdateItemMutation } from "@/hooks/use-items";
+} from "@/components/ui/dialog"
+import {
+  FieldGroup,
+  Field,
+  FieldLabel,
+  FieldContent,
+  FieldTitle,
+} from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
+import { useUpdateItemMutation } from "@/hooks/use-items"
+import { formatDateForInput } from "@/lib/utils"
 
 interface EditDialogProps {
-  item: Item | null;
-  isOpen: boolean;
-  onClose: () => void;
+  item: Item | null
+  isOpen: boolean
+  onClose: () => void
 }
 
 export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
-  const { userId } = useAuth();
-  const updateMutation = useUpdateItemMutation(userId);
+  const { userId } = useAuth()
+  const updateMutation = useUpdateItemMutation(userId)
 
   // Common fields
-  const [title, setTitle] = React.useState("");
+  const [title, setTitle] = React.useState("")
 
   // Task fields
-  const [dueAt, setDueAt] = React.useState("");
-  const [priority, setPriority] = React.useState<"none" | "low" | "medium" | "high">("none");
-  const [tags, setTags] = React.useState("");
-  const [source, setSource] = React.useState<"manual" | "ai">("manual");
-  const [isPinned, setIsPinned] = React.useState(false);
+  const [dueAt, setDueAt] = React.useState("")
+  const [priority, setPriority] = React.useState<
+    "none" | "low" | "medium" | "high"
+  >("none")
+  const [tags, setTags] = React.useState("")
+  const [source, setSource] = React.useState<"manual" | "ai">("manual")
+  const [isPinned, setIsPinned] = React.useState(false)
+  const [noteType, setNoteType] = React.useState<"journal" | "general">(
+    "general"
+  )
 
   // Finance fields
-  const [amount, setAmount] = React.useState<number>(0);
-  const [financeType, setFinanceType] = React.useState<"expense" | "income">("expense");
-  const [paymentMethod, setPaymentMethod] = React.useState("");
+  const [amount, setAmount] = React.useState<number>(0)
+  const [financeType, setFinanceType] = React.useState<"expense" | "income">(
+    "expense"
+  )
+  const [paymentMethod, setPaymentMethod] = React.useState("")
+  const [occurredAt, setOccurredAt] = React.useState("")
 
   // Note fields
-  const [content, setContent] = React.useState("");
-
-  const formatDateForInput = (date: Date | string | number | null | undefined) => {
-    if (!date) return "";
-    const dateObj = new Date(date);
-    if (Number.isNaN(dateObj.getTime())) return "";
-
-    const yyyy = dateObj.getFullYear();
-    const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-    const dd = String(dateObj.getDate()).padStart(2, "0");
-    const hh = String(dateObj.getHours()).padStart(2, "0");
-    const min = String(dateObj.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
-  };
+  const [content, setContent] = React.useState("")
 
   // Sync state with selected item when opened
   React.useEffect(() => {
-    if (!item) return;
+    if (!item) return
 
     queueMicrotask(() => {
-      setTitle(item.title || "");
-      setContent(item.content || "");
+      setTitle(item.title || "")
+      setContent(item.content || "")
 
-      setTags(item.tags ? item.tags.join(", ") : "");
-      setSource(item.source || "manual");
-      setIsPinned(!!item.isPinned);
+      setTags(item.tags ? item.tags.join(", ") : "")
+      setSource(item.source || "manual")
+      setIsPinned(!!item.isPinned)
 
       if (item.category === "task") {
-        setDueAt(formatDateForInput(item.task?.dueAt));
-        setPriority(item.task?.priority || "none");
+        setDueAt(formatDateForInput(item.task?.dueAt))
+        setPriority(item.task?.priority || "none")
       }
 
       if (item.category === "finance" && item.finance) {
-        setAmount(item.finance.amount || 0);
-        setFinanceType(item.finance.type || "expense");
-        setPaymentMethod(item.finance.paymentMethod || "");
+        setAmount(item.finance.amount || 0)
+        setFinanceType(item.finance.type || "expense")
+        setPaymentMethod(item.finance.paymentMethod || "")
+        setOccurredAt(formatDateForInput(item.finance.occurredAt))
       }
 
-    });
-  }, [item, isOpen]);
+      if (item.category === "note") {
+        setNoteType(item.note?.noteType || "general")
+      }
+    })
+  }, [item, isOpen])
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!item || !userId) return;
+    e.preventDefault()
+    if (!item || !userId) return
 
     const updates: ItemPatch = {
       title,
       content,
-      tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
       source,
-    };
+    }
 
     if (item.category === "task") {
       updates.task = {
         isCompleted: !!item.task?.isCompleted,
         dueAt: dueAt ? new Date(dueAt) : undefined,
         priority,
-      };
+      }
     } else if (item.category === "finance") {
       updates.finance = {
         type: financeType,
         amount: Number(amount),
         currency: item.finance?.currency || "IDR",
-        occurredAt: item.finance?.occurredAt || new Date(),
+        occurredAt: occurredAt
+          ? new Date(occurredAt)
+          : item.finance?.occurredAt || new Date(),
         paymentMethod: paymentMethod.trim() || undefined,
-      };
+      }
     } else if (item.category === "note") {
-      updates.isPinned = isPinned;
+      updates.isPinned = isPinned
+      updates.note = { noteType }
     }
 
     updateMutation.mutate(
       { id: item.id, category: item.category, updates },
       {
         onSuccess: () => {
-          toast.success("Item updated successfully!");
-          onClose();
+          toast.success("Item updated successfully!")
+          onClose()
         },
         onError: (err) => {
-          console.error(err);
-          toast.error("Failed to update item.");
+          console.error(err)
+          toast.error("Failed to update item.")
         },
       }
-    );
-  };
+    )
+  }
 
-  if (!item) return null;
+  if (!item) return null
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit {item.category}</DialogTitle>
         </DialogHeader>
@@ -155,7 +167,9 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="edit-tags">Tags (comma-separated)</FieldLabel>
+              <FieldLabel htmlFor="edit-tags">
+                Tags (comma-separated)
+              </FieldLabel>
               <Input
                 id="edit-tags"
                 type="text"
@@ -170,7 +184,9 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
             {item.category === "task" && (
               <>
                 <Field>
-                  <FieldLabel htmlFor="edit-due-date">Due Date & Time</FieldLabel>
+                  <FieldLabel htmlFor="edit-due-date">
+                    Due Date & Time
+                  </FieldLabel>
                   <Input
                     id="edit-due-date"
                     type="datetime-local"
@@ -182,29 +198,71 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
 
                 <Field>
                   <FieldLabel>Priority</FieldLabel>
-                  <ToggleGroup
-                    type="single"
+                  <RadioGroup
                     value={priority}
                     onValueChange={(val) => {
-                      if (val) setPriority(val as "none" | "low" | "medium" | "high");
+                      if (val)
+                        setPriority(val as "none" | "low" | "medium" | "high")
                     }}
-                    className="bg-muted p-[3px] rounded-lg w-full max-w-[280px]"
+                    className="grid grid-cols-2 gap-2 sm:grid-cols-4"
                   >
-                    <ToggleGroupItem value="none" className="flex-1 text-center py-1 text-xs">
-                      None
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="low" className="flex-1 text-center py-1 text-xs">
-                      Low
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="medium" className="flex-1 text-center py-1 text-xs">
-                      Med
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="high" className="flex-1 text-center py-1 text-xs">
-                      High
-                    </ToggleGroupItem>
-                  </ToggleGroup>
+                    <FieldLabel className="cursor-pointer">
+                      <Field
+                        data-checked={priority === "none"}
+                        className="flex flex-row items-center gap-2 rounded-lg border p-2 data-checked:border-primary data-checked:bg-primary/5"
+                      >
+                        <RadioGroupItem value="none" id="edit-priority-none" />
+                        <FieldContent>
+                          <FieldTitle className="text-xs font-semibold">
+                            None
+                          </FieldTitle>
+                        </FieldContent>
+                      </Field>
+                    </FieldLabel>
+                    <FieldLabel className="cursor-pointer">
+                      <Field
+                        data-checked={priority === "low"}
+                        className="flex flex-row items-center gap-2 rounded-lg border p-2 data-checked:border-primary data-checked:bg-primary/5"
+                      >
+                        <RadioGroupItem value="low" id="edit-priority-low" />
+                        <FieldContent>
+                          <FieldTitle className="text-xs font-semibold">
+                            Low
+                          </FieldTitle>
+                        </FieldContent>
+                      </Field>
+                    </FieldLabel>
+                    <FieldLabel className="cursor-pointer">
+                      <Field
+                        data-checked={priority === "medium"}
+                        className="flex flex-row items-center gap-2 rounded-lg border p-2 data-checked:border-primary data-checked:bg-primary/5"
+                      >
+                        <RadioGroupItem
+                          value="medium"
+                          id="edit-priority-medium"
+                        />
+                        <FieldContent>
+                          <FieldTitle className="text-xs font-semibold">
+                            Medium
+                          </FieldTitle>
+                        </FieldContent>
+                      </Field>
+                    </FieldLabel>
+                    <FieldLabel className="cursor-pointer">
+                      <Field
+                        data-checked={priority === "high"}
+                        className="flex flex-row items-center gap-2 rounded-lg border p-2 data-checked:border-primary data-checked:bg-primary/5"
+                      >
+                        <RadioGroupItem value="high" id="edit-priority-high" />
+                        <FieldContent>
+                          <FieldTitle className="text-xs font-semibold">
+                            High
+                          </FieldTitle>
+                        </FieldContent>
+                      </Field>
+                    </FieldLabel>
+                  </RadioGroup>
                 </Field>
-
               </>
             )}
 
@@ -225,7 +283,9 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="edit-payment-method">Payment Method</FieldLabel>
+                  <FieldLabel htmlFor="edit-payment-method">
+                    Payment Method
+                  </FieldLabel>
                   <Input
                     id="edit-payment-method"
                     value={paymentMethod}
@@ -236,31 +296,116 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
                 </Field>
 
                 <Field>
+                  <FieldLabel htmlFor="edit-occurred-at">
+                    Occurred Date & Time
+                  </FieldLabel>
+                  <Input
+                    id="edit-occurred-at"
+                    type="datetime-local"
+                    value={occurredAt}
+                    onChange={(e) => setOccurredAt(e.target.value)}
+                    className="h-9"
+                  />
+                </Field>
+
+                <Field>
                   <FieldLabel>Transaction Type</FieldLabel>
-                  <ToggleGroup
-                    type="single"
+                  <RadioGroup
                     value={financeType}
                     onValueChange={(val) => {
-                      if (val) setFinanceType(val as "expense" | "income");
+                      if (val) setFinanceType(val as "expense" | "income")
                     }}
-                    className="bg-muted p-[3px] rounded-lg w-full max-w-[200px]"
+                    className="grid grid-cols-2 gap-2"
                   >
-                    <ToggleGroupItem value="expense" className="flex-1 text-center py-1">
-                      Expense
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="income" className="flex-1 text-center py-1">
-                      Income
-                    </ToggleGroupItem>
-                  </ToggleGroup>
+                    <FieldLabel className="cursor-pointer">
+                      <Field
+                        data-checked={financeType === "expense"}
+                        className="flex flex-row items-center gap-2 rounded-lg border p-2 data-checked:border-primary data-checked:bg-primary/5"
+                      >
+                        <RadioGroupItem
+                          value="expense"
+                          id="edit-type-expense"
+                        />
+                        <FieldContent>
+                          <FieldTitle className="text-xs font-semibold">
+                            Expense
+                          </FieldTitle>
+                        </FieldContent>
+                      </Field>
+                    </FieldLabel>
+                    <FieldLabel className="cursor-pointer">
+                      <Field
+                        data-checked={financeType === "income"}
+                        className="flex flex-row items-center gap-2 rounded-lg border p-2 data-checked:border-primary data-checked:bg-primary/5"
+                      >
+                        <RadioGroupItem value="income" id="edit-type-income" />
+                        <FieldContent>
+                          <FieldTitle className="text-xs font-semibold">
+                            Income
+                          </FieldTitle>
+                        </FieldContent>
+                      </Field>
+                    </FieldLabel>
+                  </RadioGroup>
                 </Field>
               </>
             )}
 
             {item.category === "note" && (
-              <Field className="flex-row items-center gap-2">
-                <Checkbox id="edit-is-pinned" checked={isPinned} onCheckedChange={(checked) => setIsPinned(checked === true)} />
-                <FieldLabel htmlFor="edit-is-pinned">Pinned</FieldLabel>
-              </Field>
+              <>
+                <Field>
+                  <FieldLabel>Note Type</FieldLabel>
+                  <RadioGroup
+                    value={noteType}
+                    onValueChange={(val) => {
+                      if (val) setNoteType(val as "journal" | "general")
+                    }}
+                    className="grid grid-cols-2 gap-2"
+                  >
+                    <FieldLabel className="cursor-pointer">
+                      <Field
+                        data-checked={noteType === "general"}
+                        className="flex flex-row items-center gap-2 rounded-lg border p-2 data-checked:border-primary data-checked:bg-primary/5"
+                      >
+                        <RadioGroupItem
+                          value="general"
+                          id="edit-note-general"
+                        />
+                        <FieldContent>
+                          <FieldTitle className="text-xs font-semibold">
+                            General
+                          </FieldTitle>
+                        </FieldContent>
+                      </Field>
+                    </FieldLabel>
+                    <FieldLabel className="cursor-pointer">
+                      <Field
+                        data-checked={noteType === "journal"}
+                        className="flex flex-row items-center gap-2 rounded-lg border p-2 data-checked:border-primary data-checked:bg-primary/5"
+                      >
+                        <RadioGroupItem
+                          value="journal"
+                          id="edit-note-journal"
+                        />
+                        <FieldContent>
+                          <FieldTitle className="text-xs font-semibold">
+                            Journal
+                          </FieldTitle>
+                        </FieldContent>
+                      </Field>
+                    </FieldLabel>
+                  </RadioGroup>
+                </Field>
+
+                <Field className="flex-row items-center gap-2">
+                  <Checkbox
+                    id="edit-is-pinned"
+                    checked={isPinned}
+                    onCheckedChange={(checked) => setIsPinned(checked === true)}
+                  />
+                  <FieldLabel htmlFor="edit-is-pinned">Pinned</FieldLabel>
+                </Field>
+              </>
             )}
 
             {/* Content field - common to all */}
@@ -272,21 +417,29 @@ export function EditDialog({ item, isOpen, onClose }: EditDialogProps) {
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Details or description here..."
                 required
-                className="min-h-[120px] resize-none p-3 text-sm rounded-md border"
+                className="min-h-30 resize-none rounded-md border p-3 text-sm"
               />
             </Field>
           </FieldGroup>
 
           <DialogFooter className="mt-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={updateMutation.isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={updateMutation.isPending}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={updateMutation.isPending || !title.trim()}>
+            <Button
+              type="submit"
+              disabled={updateMutation.isPending || !title.trim()}
+            >
               {updateMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  );
+  )
 }

@@ -1,186 +1,205 @@
-"use client";
+"use client"
 
-import { useAuth } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
-import { UniversalInput } from "@/components/universal-input";
-import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useMemo, useState, useRef, useEffect } from "react";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { CheckSquare, DollarSign, FileText, Trash2, Calendar, TrendingUp, NotebookTabs, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Item } from "@/types";
-import { useItemsQuery } from "@/hooks/use-items";
-import { useDumpsQuery, useDeleteDumpMutation } from "@/hooks/use-dumps";
-import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
-
-function formatRelativeTime(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
+import { useAuth } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
+import { UniversalInput } from "@/components/universal-input"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardDescription,
+} from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useMemo, useState, useRef, useEffect } from "react"
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty"
+import {
+  Trash2,
+  Calendar,
+  Loader2,
+  CheckSquare,
+  NotebookTabs,
+  TrendingUp,
+} from "lucide-react"
+import { cn, formatRelativeTime } from "@/lib/utils"
+import { Item } from "@/types"
+import { useItemsQuery } from "@/hooks/use-items"
+import { useDumpsQuery, useDeleteDumpMutation } from "@/hooks/use-dumps"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
+import { CATEGORY_CONFIG } from "@/lib/constants"
 
 export default function Home() {
-  const { userId } = useAuth();
-  const router = useRouter();
-  const [visibleCount, setVisibleCount] = useState(5);
-  const [dumpToDelete, setDumpToDelete] = useState<string | null>(null);
+  const { userId } = useAuth()
+  const router = useRouter()
+  const [visibleCount, setVisibleCount] = useState(5)
+  const [dumpToDelete, setDumpToDelete] = useState<string | null>(null)
 
-  const { data: items = [], isLoading } = useItemsQuery(userId);
-  const { data: dumps = [], isLoading: isLoadingDumps } = useDumpsQuery(userId);
-  const deleteDumpMutation = useDeleteDumpMutation(userId);
+  const { data: items = [], isLoading } = useItemsQuery(userId)
+  const { data: dumps = [], isLoading: isLoadingDumps } = useDumpsQuery(userId)
+  const deleteDumpMutation = useDeleteDumpMutation(userId)
 
   const confirmedDumps = useMemo(
     () => dumps.filter((dump) => dump.status === "confirmed"),
     [dumps]
-  );
+  )
   const recentDumps = useMemo(
     () => confirmedDumps.slice(0, visibleCount),
     [confirmedDumps, visibleCount]
-  );
-  const hasNextPage = confirmedDumps.length > visibleCount;
+  )
+  const hasNextPage = confirmedDumps.length > visibleCount
   const itemsByDumpId = useMemo(() => {
     return items.reduce<Record<string, Item[]>>((groups, item) => {
-      if (item.dumpId) groups[item.dumpId] = [...(groups[item.dumpId] ?? []), item];
-      return groups;
-    }, {});
-  }, [items]);
+      if (item.dumpId) {
+        groups[item.dumpId] ??= []
+        groups[item.dumpId].push(item)
+      }
+      return groups
+    }, {})
+  }, [items])
 
   // Infinite Scroll Intersection Observer
-  const observerRef = useRef<HTMLDivElement | null>(null);
+  const observerRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (!hasNextPage) return;
+    if (!hasNextPage) return
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => prev + 5);
+          setVisibleCount((prev) => prev + 5)
         }
       },
       { threshold: 0.1 }
-    );
+    )
 
-    const currentTarget = observerRef.current;
+    const currentTarget = observerRef.current
     if (currentTarget) {
-      observer.observe(currentTarget);
+      observer.observe(currentTarget)
     }
 
     return () => {
       if (currentTarget) {
-        observer.unobserve(currentTarget);
+        observer.unobserve(currentTarget)
       }
-    };
-  }, [hasNextPage]);
+    }
+  }, [hasNextPage])
 
-  // Derived Stats
   const { activeTasksCount, notesCount, netBalance } = useMemo(() => {
-    const financeRecords = items.filter((i) => i.category === "finance");
-    const totalExpense = financeRecords
-      .filter((r) => r.finance?.type === "expense")
-      .reduce((acc, r) => acc + (r.finance?.amount || 0), 0);
-    const totalIncome = financeRecords
-      .filter((r) => r.finance?.type === "income")
-      .reduce((acc, r) => acc + (r.finance?.amount || 0), 0);
+    let activeTasksCount = 0
+    let notesCount = 0
+    let netBalance = 0
+
+    for (const item of items) {
+      if (item.category === "task" && !item.task?.isCompleted) {
+        activeTasksCount += 1
+      }
+
+      if (item.category === "note") {
+        notesCount += 1
+      }
+
+      if (item.category === "finance") {
+        const amount = item.finance?.amount || 0
+        netBalance += item.finance?.type === "expense" ? -amount : amount
+      }
+    }
 
     return {
-      activeTasksCount: items.filter((i) => i.category === "task" && !i.task?.isCompleted).length,
-      notesCount: items.filter((i) => i.category === "note").length,
-      netBalance: totalIncome - totalExpense,
-    };
-  }, [items]);
-
-  const categoryConfig = {
-    task: {
-      icon: CheckSquare,
-      colorClass: "text-amber-500 bg-amber-500/10 border-amber-500/20",
-      badgeVariant: "outline" as const,
-    },
-    finance: {
-      icon: DollarSign,
-      colorClass: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
-      badgeVariant: "secondary" as const,
-    },
-    note: {
-      icon: FileText,
-      colorClass: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20",
-      badgeVariant: "default" as const,
-    },
-  };
-
-
+      activeTasksCount,
+      notesCount,
+      netBalance,
+    }
+  }, [items])
 
   return (
-    <div className="flex flex-col p-4 md:p-8 max-w-2xl mx-auto w-full pt-8 gap-8">
+    <div className="ld-page-shell gap-8">
       {/* Welcome / Header */}
       <div>
-        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Your Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Capture everything, declutter your mind, and view your daily statistics.</p>
+        <p className="ld-page-kicker">Today</p>
+        <h1 className="ld-page-title">Your Dashboard</h1>
+        <p className="ld-page-subtitle">
+          Capture everything, declutter your mind, and view your daily
+          statistics.
+        </p>
       </div>
 
       {/* Stats Summary Grid */}
       <div className="grid grid-cols-3 gap-3">
-        <Card className="border-border/60 shadow-sm relative overflow-hidden group">
-          <CardHeader className="p-3 pb-1 flex flex-row items-center justify-between">
-            <CardDescription className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tasks</CardDescription>
+        <Card className="ld-glass-card group relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between p-3 pb-1">
+            <CardDescription className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              Tasks
+            </CardDescription>
             <CheckSquare className="size-3.5 text-amber-500" />
           </CardHeader>
           <CardContent className="p-3 pt-0">
             {isLoading ? (
-              <Skeleton className="h-6 w-10 mt-1" />
+              <Skeleton className="mt-1 h-6 w-10" />
             ) : (
               <div className="flex flex-col">
-                <span className="text-lg md:text-xl font-bold tracking-tight">{activeTasksCount}</span>
-                <span className="text-[10px] text-muted-foreground">pending</span>
+                <span className="text-lg font-bold tracking-tight md:text-xl">
+                  {activeTasksCount}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  pending
+                </span>
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 shadow-sm relative overflow-hidden group">
-          <CardHeader className="p-3 pb-1 flex flex-row items-center justify-between">
-            <CardDescription className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notes</CardDescription>
+        <Card className="ld-glass-card group relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between p-3 pb-1">
+            <CardDescription className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              Notes
+            </CardDescription>
             <NotebookTabs className="size-3.5 text-indigo-500" />
           </CardHeader>
           <CardContent className="p-3 pt-0">
             {isLoading ? (
-              <Skeleton className="h-6 w-10 mt-1" />
+              <Skeleton className="mt-1 h-6 w-10" />
             ) : (
               <div className="flex flex-col">
-                <span className="text-lg md:text-xl font-bold tracking-tight">{notesCount}</span>
-                <span className="text-[10px] text-muted-foreground">saved entries</span>
+                <span className="text-lg font-bold tracking-tight md:text-xl">
+                  {notesCount}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  saved entries
+                </span>
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 shadow-sm relative overflow-hidden group">
-          <CardHeader className="p-3 pb-1 flex flex-row items-center justify-between">
-            <CardDescription className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Cashflow</CardDescription>
+        <Card className="ld-glass-card group relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between p-3 pb-1">
+            <CardDescription className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              Cashflow
+            </CardDescription>
             <TrendingUp className="size-3.5 text-emerald-500" />
           </CardHeader>
           <CardContent className="p-3 pt-0">
             {isLoading ? (
-              <Skeleton className="h-6 w-12 mt-1" />
+              <Skeleton className="mt-1 h-6 w-12" />
             ) : (
               <div className="flex flex-col">
                 <span
                   className={cn(
-                    "text-xs md:text-[13px] font-bold truncate tracking-tight",
+                    "truncate text-xs font-bold tracking-tight md:text-[13px]",
                     netBalance >= 0 ? "text-emerald-500" : "text-destructive"
                   )}
                 >
                   {netBalance >= 0 ? "+" : ""}Rp {netBalance.toLocaleString()}
                 </span>
-                <span className="text-[10px] text-muted-foreground">net monthly</span>
+                <span className="text-[10px] text-muted-foreground">
+                  net monthly
+                </span>
               </div>
             )}
           </CardContent>
@@ -198,7 +217,7 @@ export default function Home() {
           <div className="flex flex-col gap-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <Card key={i}>
-                <CardContent className="p-4 flex items-center gap-3">
+                <CardContent className="flex items-center gap-3 p-4">
                   <Skeleton className="size-9 rounded-lg" />
                   <div className="flex-1 space-y-2">
                     <Skeleton className="h-4 w-1/2" />
@@ -211,31 +230,34 @@ export default function Home() {
         ) : confirmedDumps.length > 0 ? (
           <div className="flex flex-col gap-3">
             {recentDumps.map((dump) => {
-              const dumpItems = itemsByDumpId[dump.id] ?? [];
+              const dumpItems = itemsByDumpId[dump.id] ?? []
 
               return (
                 <div
                   key={dump.id}
                   onClick={() => {
-                    router.push(`/dumps/${dump.id}`);
+                    router.push(`/dumps/${dump.id}`)
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      router.push(`/dumps/${dump.id}`);
+                      e.preventDefault()
+                      router.push(`/dumps/${dump.id}`)
                     }
                   }}
                   tabIndex={0}
-                  className="block cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
+                  className="block cursor-pointer rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
                 >
-                  <Card className="border-border/50 shadow-sm hover:border-border transition-all duration-200 hover:-translate-y-[2px] group hover:shadow-md">
-                    <CardContent className="p-4 flex flex-col gap-3">
+                  <Card className="group border-border/50 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-border hover:shadow-md">
+                    <CardContent className="flex flex-col gap-3 p-4">
                       <div className="flex items-start justify-between gap-4">
-                        <p className="font-medium text-sm text-foreground/90 line-clamp-2 flex-1 italic pl-3 border-l-2 border-primary/20">
+                        <p className="line-clamp-2 flex-1 border-l-2 border-primary/20 pl-3 text-sm font-medium text-foreground/90 italic">
                           &ldquo;{dump.rawText || "Empty dump"}&rdquo;
                         </p>
-                        <div className="flex gap-1.5 shrink-0 items-center">
-                          <Badge variant="outline" className="text-[10px] shrink-0 font-medium capitalize h-5 px-1.5">
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className="h-5 shrink-0 px-1.5 text-[10px] font-medium capitalize"
+                          >
                             {dump.sourceType}
                           </Badge>
                           <Button
@@ -243,13 +265,14 @@ export default function Home() {
                             size="icon"
                             disabled={deleteDumpMutation.isPending}
                             onClick={(e) => {
-                              e.stopPropagation();
-                              setDumpToDelete(dump.id);
+                              e.stopPropagation()
+                              setDumpToDelete(dump.id)
                             }}
-                            className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md shrink-0"
+                            className="size-7 shrink-0 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                             title="Delete Dump"
                           >
-                            {deleteDumpMutation.isPending && deleteDumpMutation.variables === dump.id ? (
+                            {deleteDumpMutation.isPending &&
+                            deleteDumpMutation.variables === dump.id ? (
                               <Loader2 className="size-3.5 animate-spin" />
                             ) : (
                               <Trash2 className="size-3.5" />
@@ -258,42 +281,47 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-border/40">
-                        <span className="text-[11px] text-muted-foreground" suppressHydrationWarning>
+                      <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                        <span
+                          className="text-[11px] text-muted-foreground"
+                          suppressHydrationWarning
+                        >
                           {formatRelativeTime(dump.createdAt)}
                         </span>
 
                         <div className="flex items-center gap-1.5">
                           {dumpItems.length > 0 ? (
                             dumpItems.map((item) => {
-                              const config = categoryConfig[item.category];
-                              const Icon = config.icon;
+                              const config = CATEGORY_CONFIG[item.category]
+                              const Icon = config.icon
                               return (
                                 <div
                                   key={item.id}
                                   title={`${item.category}: ${item.title}`}
-                                  className={cn(
-                                    "size-5 rounded-md flex items-center justify-center border text-[10px]",
-                                    config.colorClass
-                                  )}
+                                  className="flex size-5 items-center justify-center rounded-md border border-muted bg-muted/10 text-[10px]"
                                 >
                                   <Icon className="size-3" />
                                 </div>
-                              );
+                              )
                             })
                           ) : (
-                            <span className="text-[10px] text-muted-foreground italic">No items</span>
+                            <span className="text-[10px] text-muted-foreground italic">
+                              No items
+                            </span>
                           )}
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 </div>
-              );
+              )
             })}
 
             {/* Infinite Scroll Sentinel & Loader */}
-            <div ref={observerRef} className="py-4 w-full flex items-center justify-center">
+            <div
+              ref={observerRef}
+              className="flex w-full items-center justify-center py-4"
+            >
               {hasNextPage ? (
                 <Button
                   variant="ghost"
@@ -304,7 +332,9 @@ export default function Home() {
                   Load More
                 </Button>
               ) : (
-                <span className="text-xs text-muted-foreground/40 font-medium">All dumps loaded</span>
+                <span className="text-xs font-medium text-muted-foreground/40">
+                  All dumps loaded
+                </span>
               )}
             </div>
           </div>
@@ -315,7 +345,10 @@ export default function Home() {
                 <Calendar />
               </EmptyMedia>
               <EmptyTitle>Your dashboard is empty</EmptyTitle>
-              <EmptyDescription>Use the input above to dump tasks, expenses, or notes, and they will appear here.</EmptyDescription>
+              <EmptyDescription>
+                Use the input above to dump tasks, expenses, or notes, and they
+                will appear here.
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
@@ -328,12 +361,12 @@ export default function Home() {
         isPending={deleteDumpMutation.isPending}
         onOpenChange={(open) => !open && setDumpToDelete(null)}
         onConfirm={() => {
-          if (!dumpToDelete) return;
+          if (!dumpToDelete) return
           deleteDumpMutation.mutate(dumpToDelete, {
             onSuccess: () => setDumpToDelete(null),
-          });
+          })
         }}
       />
     </div>
-  );
+  )
 }

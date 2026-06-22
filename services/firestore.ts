@@ -1,80 +1,94 @@
-import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
-import { db } from "./firebase";
-import { DumpSourceType, DumpStatus, ItemCategory } from "@/types";
-import { PendingItem } from "@/stores/use-dump-store";
+import {
+  collection,
+  doc,
+  serverTimestamp,
+  writeBatch,
+} from "firebase/firestore"
+import { db } from "./firebase"
+import { ITEM_COLLECTIONS } from "@/lib/app-constants"
+import type { DumpSourceType, DumpStatus } from "@/types"
+import type { PendingItem } from "@/stores/use-dump-store"
 
-// ── Firestore-safe item shape (no undefined allowed) ──────────────────────
-
-interface FirestoreTaskData {
-  isCompleted: boolean;
-  dueAt?: Date | null;
-  priority?: "none" | "low" | "medium" | "high";
-}
-
-interface FirestoreFinanceData {
-  type: "expense" | "income";
-  amount: number;
-  currency: "IDR";
-  occurredAt: Date;
-  paymentMethod?: string;
-}
-
-interface FirestoreNoteData {
-  noteType: "journal" | "general";
-}
-
-interface FirestoreItemInput {
-  category: ItemCategory;
-  title: string;
-  content: string;
-  task?: FirestoreTaskData;
-  finance?: FirestoreFinanceData;
-  note?: FirestoreNoteData;
-  tags?: string[];
-  source?: "manual" | "ai";
-  isPinned?: boolean;
-  aiConfidence?: number;
-}
-
-const collectionNameMap = {
-  task: "tasks",
-  finance: "finances",
-  note: "notes",
-} as const;
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-/**
- * Recursively strips all keys whose value is `undefined` from an object.
- * Firestore throws on any `undefined` value, even nested ones.
- */
 function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
-  const clean = {} as Record<string, unknown>;
+  const clean: Record<string, unknown> = {}
+
   for (const [key, value] of Object.entries(obj)) {
-    if (value === undefined) continue;
-    if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
-      clean[key] = stripUndefined(value as Record<string, unknown>);
+    if (value === undefined) continue
+
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      !(value instanceof Date)
+    ) {
+      clean[key] = stripUndefined(value as Record<string, unknown>)
     } else {
-      clean[key] = value;
+      clean[key] = value
     }
   }
-  return clean as T;
+
+  return clean as T
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────
+function buildItemDocument(
+  userId: string,
+  dumpId: string,
+  item: PendingItem,
+  fallbackSource: "manual" | "ai"
+) {
+  const document: Record<string, unknown> = {
+    userId,
+    dumpId,
+    category: item.category,
+    title: item.title,
+    content: item.content || "",
+    tags: item.tags || [],
+    source: item.source || fallbackSource,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }
+
+  if (item.category === "task" && item.task) {
+    document.task = {
+      isCompleted: !!item.task.isCompleted,
+      dueAt: item.task.dueAt ? new Date(item.task.dueAt) : null,
+      priority: item.task.priority || "none",
+    }
+  }
+
+  if (item.category === "finance" && item.finance) {
+    document.finance = {
+      type: item.finance.type || "expense",
+      amount: Number(item.finance.amount) || 0,
+      currency: item.finance.currency || "IDR",
+      occurredAt: item.finance.occurredAt
+        ? new Date(item.finance.occurredAt)
+        : new Date(),
+      paymentMethod: item.finance.paymentMethod,
+    }
+  }
+
+  if (item.category === "note") {
+    document.isPinned = !!item.isPinned
+  }
+
+  if (item.aiConfidence !== undefined) {
+    document.aiConfidence = item.aiConfidence
+  }
+
+  return stripUndefined(document)
+}
 
 export async function saveDumpAndItems(
   userId: string,
   sourceType: DumpSourceType,
   rawText: string,
   status: DumpStatus,
-  items: FirestoreItemInput[]
+  items: PendingItem[]
 ) {
-  const batch = writeBatch(db);
-
-  // 1. Create the Dump document
-  const dumpsRef = collection(db, "users", userId, "dumps");
-  const dumpDocRef = doc(dumpsRef);
+  const batch = writeBatch(db)
+  const dumpsRef = collection(db, "users", userId, "dumps")
+  const dumpDocRef = doc(dumpsRef)
 
   batch.set(dumpDocRef, {
     userId,
@@ -83,39 +97,20 @@ export async function saveDumpAndItems(
     status,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  })
 
-  // 2. Create Item documents in their own category-specific subcollections
-  if (items.length > 0) {
-    for (const item of items) {
-      const collectionName = collectionNameMap[item.category];
-      const itemDocRef = doc(collection(db, "users", userId, collectionName));
+  for (const item of items) {
+    const collectionName = ITEM_COLLECTIONS[item.category]
+    const itemDocRef = doc(collection(db, "users", userId, collectionName))
 
-      const base = {
-        userId,
-        dumpId: dumpDocRef.id,
-        category: item.category,
-        title: item.title,
-        content: item.content,
-        tags: item.tags || [],
-        source: item.source || "manual",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      // Build category-specific fields, then merge + strip undefined
-      const extra: Record<string, unknown> = {};
-      if (item.task) extra.task = item.task;
-      if (item.finance) extra.finance = item.finance;
-      if (item.note) extra.note = item.note;
-      if (item.aiConfidence !== undefined) extra.aiConfidence = item.aiConfidence;
-
-      batch.set(itemDocRef, stripUndefined({ ...base, ...extra }));
-    }
+    batch.set(
+      itemDocRef,
+      buildItemDocument(userId, dumpDocRef.id, item, "manual")
+    )
   }
 
-  await batch.commit();
-  return { dumpId: dumpDocRef.id };
+  await batch.commit()
+  return { dumpId: dumpDocRef.id }
 }
 
 export async function confirmDumpAndItems(
@@ -123,59 +118,21 @@ export async function confirmDumpAndItems(
   dumpId: string,
   items: PendingItem[]
 ) {
-  const batch = writeBatch(db);
+  const batch = writeBatch(db)
+  const dumpDocRef = doc(db, "users", userId, "dumps", dumpId)
 
-  // 1. Update the Dump document to status = "confirmed" and clear extractedItems
-  const dumpDocRef = doc(db, "users", userId, "dumps", dumpId);
   batch.update(dumpDocRef, {
     status: "confirmed",
     extractedItems: null,
     updatedAt: serverTimestamp(),
-  });
+  })
 
-  // 2. Create Item documents in their own category-specific subcollections
-  if (items.length > 0) {
-    for (const item of items) {
-      const collectionName = collectionNameMap[item.category];
-      const itemDocRef = doc(collection(db, "users", userId, collectionName));
+  for (const item of items) {
+    const collectionName = ITEM_COLLECTIONS[item.category]
+    const itemDocRef = doc(collection(db, "users", userId, collectionName))
 
-      const base = {
-        userId,
-        dumpId: dumpId,
-        category: item.category,
-        title: item.title,
-        content: item.content || "",
-        tags: item.tags || [],
-        source: item.source || "ai",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      const extra: Record<string, unknown> = {};
-      if (item.category === "task" && item.task) {
-        extra.task = {
-          isCompleted: !!item.task.isCompleted,
-          dueAt: item.task.dueAt ? new Date(item.task.dueAt) : null,
-          priority: item.task.priority || "none",
-        };
-      }
-      if (item.category === "finance" && item.finance) {
-        extra.finance = {
-          type: item.finance.type || "expense",
-          amount: Number(item.finance.amount) || 0,
-          currency: item.finance.currency || "IDR",
-          occurredAt: item.finance.occurredAt ? new Date(item.finance.occurredAt) : new Date(),
-          paymentMethod: item.finance.paymentMethod,
-        };
-      }
-      if (item.category === "note") extra.isPinned = !!item.isPinned;
-      if (item.aiConfidence !== undefined) {
-        extra.aiConfidence = item.aiConfidence;
-      }
-
-      batch.set(itemDocRef, stripUndefined({ ...base, ...extra }));
-    }
+    batch.set(itemDocRef, buildItemDocument(userId, dumpId, item, "ai"))
   }
 
-  await batch.commit();
+  await batch.commit()
 }

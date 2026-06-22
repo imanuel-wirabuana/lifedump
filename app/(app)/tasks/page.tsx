@@ -1,124 +1,148 @@
-"use client";
+"use client"
 
-import { useAuth } from "@clerk/nextjs";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckSquare, Trash2, Calendar, AlertCircle, Pencil, Tag, Sparkles, Filter, ArrowUpDown } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { EditDialog } from "@/components/edit-dialog";
-import { Item } from "@/types";
-import { useItemsByCategoryQuery, useToggleItemTaskMutation, useDeleteItemMutation } from "@/hooks/use-items";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@clerk/nextjs"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty"
+import { useMemo, useState } from "react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  CheckSquare,
+  Plus,
+  Trash2,
+  Pencil,
+  Tag,
+  Filter,
+  ArrowUpDown,
+} from "lucide-react"
+import { ItemCard, ItemCardSkeleton } from "@/components/item-card"
+import { cn } from "@/lib/utils"
+import { EditDialog } from "@/components/edit-dialog"
+import { AddItemDialog } from "@/components/add-item-dialog"
+import { Item, ItemCategory } from "@/types"
+import {
+  useItemsByCategoryQuery,
+  useToggleItemTaskMutation,
+  useDeleteItemMutation,
+} from "@/hooks/use-items"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { PRIORITY_WEIGHTS } from "@/lib/app-constants"
 
-type SortBy = "dueDate" | "priority" | "title" | "createdAt";
+type SortBy = "dueDate" | "priority" | "title" | "createdAt"
+type PriorityFilter = "all" | "none" | "low" | "medium" | "high"
+
+function getTimestamp(value?: Date) {
+  return value ? new Date(value).getTime() : 0
+}
+
+function sortTasks(tasks: Item[], sortBy: SortBy) {
+  tasks.sort((a, b) => {
+    if (sortBy === "dueDate") {
+      const timeA = a.task?.dueAt ? new Date(a.task.dueAt).getTime() : Infinity
+      const timeB = b.task?.dueAt ? new Date(b.task.dueAt).getTime() : Infinity
+      return timeA - timeB
+    }
+
+    if (sortBy === "priority") {
+      const weightA = PRIORITY_WEIGHTS[a.task?.priority || "none"]
+      const weightB = PRIORITY_WEIGHTS[b.task?.priority || "none"]
+      return weightB - weightA
+    }
+
+    if (sortBy === "title") {
+      return (a.title || "").localeCompare(b.title || "")
+    }
+
+    return getTimestamp(b.createdAt) - getTimestamp(a.createdAt)
+  })
+}
 
 export default function TasksPage() {
-  const { userId } = useAuth();
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [isEditOpen, setIsEditOpen] = useState(false);
+  const { userId } = useAuth()
+  const [editingItem, setEditingItem] = useState<Item | null>(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [addCategory, setAddCategory] = useState<ItemCategory | null>(null)
 
-  const { data: tasks, isLoading } = useItemsByCategoryQuery(userId, "task");
+  const { data: tasks, isLoading } = useItemsByCategoryQuery(userId, "task")
 
-  const toggleMutation = useToggleItemTaskMutation(userId);
-  const deleteMutation = useDeleteItemMutation(userId);
+  const toggleMutation = useToggleItemTaskMutation(userId)
+  const deleteMutation = useDeleteItemMutation(userId)
 
-  // Filter and Sorting state
-  const [filterTag, setFilterTag] = useState<string>("all");
-  const [filterPriority, setFilterPriority] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<SortBy>("createdAt");
+  const [filterTag, setFilterTag] = useState<string>("all")
+  const [filterPriority, setFilterPriority] = useState<PriorityFilter>("all")
+  const [sortBy, setSortBy] = useState<SortBy>("createdAt")
 
-  const allTags = Array.from(
-    new Set(
-      tasks
-        ?.flatMap((t) => t.tags || [])
-        .map((t) => t.trim().toLowerCase()) || []
-    )
-  );
+  const allTags = useMemo(() => {
+    const tags = new Set<string>()
+    for (const task of tasks || []) {
+      for (const tag of task.tags || []) {
+        const normalizedTag = tag.trim().toLowerCase()
+        if (normalizedTag) tags.add(normalizedTag)
+      }
+    }
+    return Array.from(tags)
+  }, [tasks])
 
-  const processTasks = (list: Item[]) => {
-    let result = [...list];
+  const { activeTasks, completedTasks } = useMemo(() => {
+    const active: Item[] = []
+    const completed: Item[] = []
+    const normalizedFilterTag = filterTag.toLowerCase()
 
-    // Filter by tag
-    if (filterTag !== "all") {
-      result = result.filter((t) =>
-        t.tags?.some((tag) => tag.toLowerCase() === filterTag.toLowerCase())
-      );
+    for (const task of tasks || []) {
+      const matchesTag =
+        filterTag === "all" ||
+        task.tags?.some((tag) => tag.toLowerCase() === normalizedFilterTag)
+      const matchesPriority =
+        filterPriority === "all" ||
+        (task.task?.priority || "none") === filterPriority
+
+      if (!matchesTag || !matchesPriority) continue
+
+      if (task.task?.isCompleted) {
+        completed.push(task)
+      } else {
+        active.push(task)
+      }
     }
 
-    // Filter by priority
-    if (filterPriority !== "all") {
-      result = result.filter((t) => (t.task?.priority || "none") === filterPriority);
-    }
+    sortTasks(active, sortBy)
+    sortTasks(completed, sortBy)
 
-    // Sort
-    result.sort((a, b) => {
-      if (sortBy === "dueDate") {
-        const timeA = a.task?.dueAt ? new Date(a.task.dueAt).getTime() : Infinity;
-        const timeB = b.task?.dueAt ? new Date(b.task.dueAt).getTime() : Infinity;
-        return timeA - timeB;
-      }
-      if (sortBy === "priority") {
-        const priorityWeight = { high: 3, medium: 2, low: 1, none: 0 };
-        const weightA = priorityWeight[a.task?.priority || "none"] || 0;
-        const weightB = priorityWeight[b.task?.priority || "none"] || 0;
-        return weightB - weightA;
-      }
-      if (sortBy === "title") {
-        return (a.title || "").localeCompare(b.title || "");
-      }
-      // Default: createdAt desc
-      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return timeB - timeA;
-    });
-
-    return result;
-  };
+    return { activeTasks: active, completedTasks: completed }
+  }, [tasks, filterTag, filterPriority, sortBy])
 
   if (isLoading) {
     return (
-      <div className="flex flex-col p-4 md:p-8 max-w-2xl mx-auto w-full pt-8 gap-6">
+      <div className="ld-page-shell">
         <Skeleton className="h-9 w-24" />
         <Skeleton className="h-8 w-48" />
         <div className="flex flex-col gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <Skeleton className="size-4 rounded" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/3" />
-                </div>
-              </CardContent>
-            </Card>
+            <ItemCardSkeleton key={i} />
           ))}
         </div>
       </div>
-    );
+    )
   }
-
-  const activeTasks = tasks?.filter((t) => !t.task?.isCompleted) || [];
-  const completedTasks = tasks?.filter((t) => !!t.task?.isCompleted) || [];
-
-  const checkIsOverdue = (dueAt?: Date) => {
-    if (!dueAt) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueDate = new Date(dueAt);
-    dueDate.setHours(0, 0, 0, 0);
-    return dueDate < today;
-  };
 
   const renderTaskList = (list: typeof activeTasks, emptyMessage: string) => {
     if (list.length === 0) {
       return (
-        <Empty className="py-12 border-border/40">
+        <Empty className="border-border/40 py-12">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <CheckSquare />
@@ -127,159 +151,94 @@ export default function TasksPage() {
             <EmptyDescription>{emptyMessage}</EmptyDescription>
           </EmptyHeader>
         </Empty>
-      );
+      )
     }
 
     return (
       <div className="flex flex-col gap-3">
-        {list.map((task) => {
-          const isOverdue = !task.task?.isCompleted && checkIsOverdue(task.task?.dueAt);
-
-          return (
-            <Card
-              key={task.id}
-              className={cn(
-                "border border-border/40 bg-card hover:bg-muted/10 transition-all duration-300 shadow-sm rounded-xl overflow-hidden relative",
-                task.task?.priority === "high" && "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-red-500",
-                task.task?.priority === "medium" && "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-amber-500",
-                task.task?.priority === "low" && "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-blue-500",
-                isOverdue && "border-destructive/20 bg-destructive/5/20 before:bg-destructive"
-              )}
-            >
-              <CardContent className="p-4 pl-5 flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 min-w-0">
-                  <Checkbox
-                    checked={!!task.task?.isCompleted}
-                    onCheckedChange={(checked) =>
-                      toggleMutation.mutate({ id: task.id, isCompleted: !!checked })
-                    }
-                    className="size-4 mt-0.5 rounded border-amber-500/30 data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500 cursor-pointer"
-                  />
-                  <div className="min-w-0">
-                    <p
-                      className={cn(
-                        "font-semibold text-sm truncate max-w-[320px] md:max-w-[400px]",
-                        task.task?.isCompleted && "line-through text-muted-foreground font-normal"
-                      )}
-                    >
-                      {task.title}
-                    </p>
-                    {task.content && (
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 max-w-[320px] md:max-w-[400px]">{task.content}</p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      {task.task?.dueAt && (
-                        <span
-                          suppressHydrationWarning
-                          className={cn(
-                            "text-[10px] inline-flex items-center gap-1 font-medium",
-                            isOverdue
-                              ? "text-destructive font-semibold"
-                              : "text-muted-foreground"
-                          )}
-                        >
-                          <Calendar className="size-3 shrink-0" />
-                          Due: {new Date(task.task.dueAt).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                      )}
-                      {task.task?.priority && task.task.priority !== "none" && (
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[8px] uppercase px-1 py-0 h-3.5 font-bold tracking-wider shrink-0",
-                            task.task.priority === "high" && "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
-                            task.task.priority === "medium" && "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                            task.task.priority === "low" && "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                          )}
-                        >
-                          {task.task.priority}
-                        </Badge>
-                      )}
-                      {isOverdue && (
-                        <Badge
-                          variant="destructive"
-                          className="text-[8px] uppercase px-1 py-0 h-3.5 font-bold tracking-wider shrink-0"
-                        >
-                          <AlertCircle className="size-2.5 mr-0.5" />
-                          Overdue
-                        </Badge>
-                      )}
-                      {task.source === "ai" && (
-                        <span className="text-[10px] text-indigo-500 inline-flex items-center gap-0.5 shrink-0 font-medium" title="AI Generated">
-                          <Sparkles className="size-2.5" />
-                          AI
-                        </span>
-                      )}
-                      {task.tags && task.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 w-full mt-1.5">
-                          {task.tags.map((tag) => (
-                            <Badge
-                              key={tag}
-                              variant="outline"
-                              className="text-[9px] py-0 px-1.5 border-border bg-muted/40 font-mono text-muted-foreground font-normal shrink-0 rounded hover:bg-muted/80 transition-colors"
-                            >
-                              #{tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 mt-0.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setEditingItem(task);
-                      setIsEditOpen(true);
-                    }}
-                    className="text-muted-foreground hover:text-foreground size-7 shrink-0 rounded-md"
-                  >
-                    <Pencil className="size-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => deleteMutation.mutate({ id: task.id, category: "task" })}
-                    className="text-muted-foreground hover:text-destructive size-7 shrink-0 rounded-md"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+        {list.map((task) => (
+          <ItemCard
+            key={task.id}
+            item={task}
+            leading={
+              <Checkbox
+                checked={!!task.task?.isCompleted}
+                onCheckedChange={(checked) =>
+                  toggleMutation.mutate({
+                    id: task.id,
+                    isCompleted: !!checked,
+                  })
+                }
+                className="size-4 cursor-pointer rounded border-primary/30 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+              />
+            }
+            actions={
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setEditingItem(task)
+                    setIsEditOpen(true)
+                  }}
+                  className="size-7 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() =>
+                    deleteMutation.mutate({ id: task.id, category: "task" })
+                  }
+                  className="size-7 shrink-0 rounded-md text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </>
+            }
+          />
+        ))}
       </div>
-    );
-  };
+    )
+  }
 
   return (
-    <div className="flex flex-col p-4 md:p-8 max-w-2xl mx-auto w-full pt-8 gap-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
-        <p className="text-sm text-muted-foreground mt-1">Manage and track your active or completed tasks.</p>
+    <div className="ld-page-shell">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="ld-page-kicker">Action queue</p>
+          <h1 className="ld-page-title">Tasks</h1>
+          <p className="ld-page-subtitle">
+            Manage and track your active or completed tasks.
+          </p>
+        </div>
+        <Button
+          onClick={() => setAddCategory("task")}
+          className="h-9 gap-1.5 rounded-full px-4 text-xs font-bold shadow-sm"
+        >
+          <Plus className="size-4" /> Add Task
+        </Button>
       </div>
 
       <Tabs defaultValue="active" className="w-full">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <TabsList className="grid w-full grid-cols-2 max-w-[280px]">
+        <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <TabsList className="grid w-full max-w-[280px] grid-cols-2">
             <TabsTrigger value="active" className="gap-1.5">
               Active
-              <Badge variant="secondary" className="px-1 py-0 text-[10px] font-normal pointer-events-none">
+              <Badge
+                variant="secondary"
+                className="pointer-events-none px-1 py-0 text-[10px] font-normal"
+              >
                 {activeTasks.length}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="completed" className="gap-1.5">
               Completed
-              <Badge variant="outline" className="px-1 py-0 text-[10px] font-normal pointer-events-none">
+              <Badge
+                variant="outline"
+                className="pointer-events-none px-1 py-0 text-[10px] font-normal"
+              >
                 {completedTasks.length}
               </Badge>
             </TabsTrigger>
@@ -288,13 +247,20 @@ export default function TasksPage() {
           {/* Filtering and Sorting Bar */}
           <div className="flex flex-wrap items-center gap-2">
             {/* Priority Filter */}
-            <Select value={filterPriority} onValueChange={setFilterPriority}>
-              <SelectTrigger className={cn(
-                "h-8 rounded-full bg-background/50 border hover:bg-muted/50 transition-all duration-200 gap-1.5 text-xs font-medium px-3 cursor-pointer",
-                filterPriority !== "all" 
-                  ? "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10" 
-                  : "border-border/60 text-muted-foreground hover:text-foreground"
-              )}>
+            <Select
+              value={filterPriority}
+              onValueChange={(value) =>
+                setFilterPriority(value as PriorityFilter)
+              }
+            >
+              <SelectTrigger
+                className={cn(
+                  "h-8 cursor-pointer gap-1.5 rounded-full border bg-background/50 px-3 text-xs font-medium transition-all duration-200 hover:bg-muted/50",
+                  filterPriority !== "all"
+                    ? "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"
+                    : "border-border/60 text-muted-foreground hover:text-foreground"
+                )}
+              >
                 <Filter className="size-3 shrink-0" />
                 <SelectValue />
               </SelectTrigger>
@@ -310,12 +276,14 @@ export default function TasksPage() {
             {/* Tag Filter */}
             {allTags.length > 0 && (
               <Select value={filterTag} onValueChange={setFilterTag}>
-                <SelectTrigger className={cn(
-                  "h-8 rounded-full bg-background/50 border hover:bg-muted/50 transition-all duration-200 gap-1.5 text-xs font-medium px-3 cursor-pointer max-w-[150px]",
-                  filterTag !== "all" 
-                    ? "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10" 
-                    : "border-border/60 text-muted-foreground hover:text-foreground"
-                )}>
+                <SelectTrigger
+                  className={cn(
+                    "h-8 max-w-[150px] cursor-pointer gap-1.5 rounded-full border bg-background/50 px-3 text-xs font-medium transition-all duration-200 hover:bg-muted/50",
+                    filterTag !== "all"
+                      ? "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"
+                      : "border-border/60 text-muted-foreground hover:text-foreground"
+                  )}
+                >
                   <Tag className="size-3 shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
@@ -331,8 +299,11 @@ export default function TasksPage() {
             )}
 
             {/* Sort Control */}
-            <Select value={sortBy} onValueChange={(val) => setSortBy(val as SortBy)}>
-              <SelectTrigger className="h-8 rounded-full bg-background/50 border border-border/60 hover:bg-muted/50 transition-all duration-200 gap-1.5 text-xs font-medium px-3 text-muted-foreground hover:text-foreground cursor-pointer">
+            <Select
+              value={sortBy}
+              onValueChange={(val) => setSortBy(val as SortBy)}
+            >
+              <SelectTrigger className="h-8 cursor-pointer gap-1.5 rounded-full border border-border/60 bg-background/50 px-3 text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-muted/50 hover:text-foreground">
                 <ArrowUpDown className="size-3 shrink-0" />
                 <SelectValue />
               </SelectTrigger>
@@ -347,11 +318,17 @@ export default function TasksPage() {
         </div>
 
         <TabsContent value="active" className="mt-0">
-          {renderTaskList(processTasks(activeTasks), "No pending tasks matching filters. Dump one using the home input!")}
+          {renderTaskList(
+            activeTasks,
+            "No pending tasks matching filters. Dump one using the home input!"
+          )}
         </TabsContent>
 
         <TabsContent value="completed" className="mt-0">
-          {renderTaskList(processTasks(completedTasks), "No completed tasks matching filters. Finish some items!")}
+          {renderTaskList(
+            completedTasks,
+            "No completed tasks matching filters. Finish some items!"
+          )}
         </TabsContent>
       </Tabs>
 
@@ -359,10 +336,15 @@ export default function TasksPage() {
         item={editingItem}
         isOpen={isEditOpen}
         onClose={() => {
-          setEditingItem(null);
-          setIsEditOpen(false);
+          setEditingItem(null)
+          setIsEditOpen(false)
         }}
       />
+      <AddItemDialog
+        category={addCategory}
+        isOpen={addCategory !== null}
+        onClose={() => setAddCategory(null)}
+      />
     </div>
-  );
+  )
 }

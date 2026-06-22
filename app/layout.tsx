@@ -1,4 +1,5 @@
 import { Geist_Mono, Source_Sans_3 } from "next/font/google"
+import type { Metadata } from "next"
 import { ClerkProvider } from "@clerk/nextjs"
 import { Providers } from "@/components/providers"
 
@@ -16,6 +17,14 @@ const fontMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
 })
+
+export const metadata: Metadata = {
+  applicationName: "LifeDump",
+  title: {
+    default: "LifeDump",
+    template: "%s | LifeDump",
+  },
+}
 
 export default function RootLayout({
   children,
